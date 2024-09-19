@@ -87,19 +87,7 @@ class CryptoAnalyzer:
         # объем
         ax2 = ax1.twinx()
         ax2.set_ylabel('Объем', color='tab:orange')
-
-        # Рассчитываем ширину столбцов
-        if len(self.timestamps) > 1:
-            width = (self.timestamps[-1] - self.timestamps[0]).total_seconds() / (len(self.timestamps) * 24 * 60 * 60)
-        else:
-            width = 0.8
-
-        # Столбчатая диаграмма объема
-        ax2.bar(self.timestamps, self.volumes, alpha=0.3, color='tab:orange', label='Объем') #, width=width
-
-        # Линейный график объема
-        ax2.plot(self.timestamps, self.volumes, color='tab:orange', alpha=0.5, linestyle='--')
-
+        ax2.plot(self.timestamps, self.volumes, color='tab:orange', label='Объем')
         ax2.tick_params(axis='y', labelcolor='tab:orange')
 
         # Настройка графика
@@ -181,7 +169,7 @@ class CryptoAnalyzer:
             price_volume_chart = self.create_price_volume_chart()
             await self.send_chart(price_volume_chart)
 
-            if len(self.crypto_prices) % 2 == 0:
+            if len(self.crypto_prices) % 5 == 0: #Каждые 5 минут шлем корреляцию
                 correlation_chart = self.create_correlation_chart()
                 await self.send_chart(correlation_chart)
 
