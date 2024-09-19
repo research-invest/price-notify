@@ -1,0 +1,7 @@
+{
+    "exchange_name": "binance",
+    "symbol": "TAO/USDT",
+    "telegram_token": "7488441527:AAGTVhhaXIglh94t9dTLWOAlaxHMELsWi9c",
+    "chat_id": "192218810",
+    "update_interval": 60
+}
