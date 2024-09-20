@@ -9,7 +9,7 @@ from datetime import datetime
 import json
 import logging
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.WARN, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
@@ -108,17 +108,24 @@ class CryptoAnalyzer:
 
         for i, symbol in enumerate(self.symbols):
             prices = np.array(self.prices[symbol])
-            norm_prices = (prices - np.mean(prices)) / np.std(prices)
-            ax.plot(self.timestamps, norm_prices, color=self.colors[i], label=symbol)
+            initial_price = prices[0]
+            normalized_prices = (prices - initial_price) / initial_price * 100  # процентное изменение
+            ax.plot(self.timestamps, normalized_prices, color=self.colors[i], label=symbol)
 
         ax.set_xlabel('Время')
-        ax.set_ylabel('Нормализованная цена')
+        ax.set_ylabel('Процентное изменение цены')
         ax.legend(loc='upper left')
         ax.grid(True)
 
-        plt.title('Корреляция цен криптовалют')
+        plt.title('Сравнение изменения цен криптовалют')
         plt.gcf().autofmt_xdate()
         ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%H:%M'))
+
+        # Горизонтальная линия на уровне 0%
+        ax.axhline(y=0, color='gray', linestyle='--')
+
+        # Формат для оси Y, чтобы показывать проценты
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.1f}%"))
 
         plt.tight_layout()
 
