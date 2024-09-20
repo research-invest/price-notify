@@ -103,36 +103,40 @@ class CryptoAnalyzer:
 
         for i, symbol in enumerate(self.symbols):
             color = self.colors[i]
-
+            
             # Нормализация цен
             prices = np.array(self.prices[symbol])
             initial_price = prices[0]
-            normalized_prices = (prices - initial_price) / initial_price * 100  # процентное изменение
+            normalized_prices = (prices - initial_price) / initial_price * 100
 
             # График цены
             line, = ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена')
+            
+            # Аннотации для цен
+            for j, (timestamp, norm_price, price) in enumerate(zip(self.timestamps, normalized_prices, prices)):
+                if j % 3 == 0 or j == len(prices) - 1:  # Аннотируем каждую 3-ю точку и последнюю
+                    ax1.annotate(f'{format_number(price)}', 
+                                 xy=(timestamp, norm_price),
+                                 xytext=(0, 5), textcoords='offset points',
+                                 ha='center', va='bottom', color=color,
+                                 fontsize=8, rotation=45)
 
             # Нормализация объемов
             volumes = np.array(self.volumes[symbol])
             initial_volume = volumes[0]
-            normalized_volumes = (volumes - initial_volume) / initial_volume * 100  # процентное изменение
-
+            normalized_volumes = (volumes - initial_volume) / initial_volume * 100
+            
             # График объема
             ax2.plot(self.timestamps, normalized_volumes, color=color, label=f'{symbol} Объем')
-
-            # Аннотация с текущей ценой
-            ax1.annotate(f'{symbol}: {format_number(prices[-1])}',
-                         xy=(self.timestamps[-1], normalized_prices[-1]),
-                         xytext=(5, 0), textcoords='offset points',
-                         ha='left', va='center', color=color)
-
-            # Аннотация с текущим объемом
-            current_volume = volumes[-1]
-            formatted_volume = format_number(current_volume)
-            ax2.annotate(f'{symbol}: {formatted_volume}',
-                         xy=(self.timestamps[-1], normalized_volumes[-1]),
-                         xytext=(5, 0), textcoords='offset points',
-                         ha='left', va='center', color=color)
+            
+            # Аннотации для объемов
+            for j, (timestamp, norm_volume, volume) in enumerate(zip(self.timestamps, normalized_volumes, volumes)):
+                if j % 3 == 0 or j == len(volumes) - 1:  # Аннотируем каждую 3-ю точку и последнюю
+                    ax2.annotate(f'{format_number(volume)}', 
+                                 xy=(timestamp, norm_volume),
+                                 xytext=(0, 5), textcoords='offset points',
+                                 ha='center', va='bottom', color=color,
+                                 fontsize=8, rotation=45)
 
         ax1.set_ylabel('Процентное изменение цены')
         ax1.legend(loc='upper left')
@@ -153,7 +157,7 @@ class CryptoAnalyzer:
         plt.tight_layout()
 
         buf = BytesIO()
-        plt.savefig(buf, format='png')
+        plt.savefig(buf, format='png', dpi=300)  # Увеличиваем DPI для лучшего качества
         buf.seek(0)
         plt.close()
 
