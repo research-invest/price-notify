@@ -8,62 +8,90 @@ import numpy as np
 from datetime import datetime
 import json
 import logging
-# from pprint import pprint
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
+def format_number(number):
+    return f"{number:,.2f}".replace(',', ' ')
+
+
 class CryptoAnalyzer:
-    def __init__(self, exchange_name: str, symbol: str, telegram_token: str, chat_id: str):
+    def __init__(self, exchange_name: str, symbols: list, telegram_token: str, chat_id: str, correlation_interval: int):
         self.exchange = getattr(ccxt, exchange_name)()
-        self.symbol = symbol
+        self.symbols = symbols
         self.bot = Bot(token=telegram_token)
         self.chat_id = chat_id
-        self.prev_crypto_price, self.prev_volume = self.get_price_and_volume(self.symbol)
-        self.prev_btc_price, _ = self.get_price_and_volume('BTC/USDT')
-        self.crypto_prices = []
-        self.btc_prices = []
-        self.volumes = []
+        self.correlation_interval = correlation_interval
+        self.prices = {symbol: [] for symbol in symbols}
+        self.volumes = {symbol: [] for symbol in symbols}
         self.timestamps = []
+        self.colors = plt.cm.rainbow(np.linspace(0, 1, len(symbols)))
 
     def get_price_and_volume(self, symbol: str):
         ticker = self.exchange.fetch_ticker(symbol)
-        # print(f"Ticker for {symbol}:")
-        # pprint(ticker)
-
         return ticker['last'], ticker['quoteVolume']
 
-    def analyze_prices(self, crypto_price: float, btc_price: float) -> str:
-        crypto_change = (crypto_price - self.prev_crypto_price) / self.prev_crypto_price
-        btc_change = (btc_price - self.prev_btc_price) / self.prev_btc_price
+    async def update_prices(self):
+        try:
+            current_time = datetime.now()
+            self.timestamps.append(current_time)
 
-        if crypto_change > 0.02:
-            return "Цена выросла! Надо продавать."
-        elif crypto_change < -0.02:
-            return "Цена упала! Надо покупать."
-        elif abs(crypto_change - btc_change) > 0.01:
-            return "Внимание! Цена движется иначе, чем Bitcoin."
-        else:
-            return "Значительных изменений нет."
+            message = ""
+            for symbol in self.symbols:
+                price, volume = self.get_price_and_volume(symbol)
+                self.prices[symbol].append(price)
+                self.volumes[symbol].append(volume)
 
-    def create_correlation_chart(self):
-        if len(self.crypto_prices) < 2:
+                formatted_price = format_number(price)
+                formatted_volume = format_number(volume)
+                message += f"{symbol}:\nЦена: {formatted_price}\nОбъем: {formatted_volume}\n\n"
+
+            if len(self.timestamps) > 100:
+                self.timestamps = self.timestamps[-100:]
+                for symbol in self.symbols:
+                    self.prices[symbol] = self.prices[symbol][-100:]
+                    self.volumes[symbol] = self.volumes[symbol][-100:]
+
+            await self.send_message(message)
+
+            price_volume_chart = self.create_price_volume_chart()
+            await self.send_chart(price_volume_chart)
+
+            if len(self.timestamps) % self.correlation_interval == 0:
+                correlation_chart = self.create_correlation_chart()
+                await self.send_chart(correlation_chart)
+
+        except Exception as e:
+            logger.error(f"An error occurred in update_prices: {e}")
+
+    def create_price_volume_chart(self):
+        if len(self.timestamps) < 2:
             return None
 
-        norm_crypto = (np.array(self.crypto_prices) - np.mean(self.crypto_prices)) / np.std(self.crypto_prices)
-        norm_btc = (np.array(self.btc_prices) - np.mean(self.btc_prices)) / np.std(self.btc_prices)
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
 
-        plt.figure(figsize=(10, 6))
-        plt.plot(self.timestamps, norm_crypto, label=self.symbol)
-        plt.plot(self.timestamps, norm_btc, label='BTC/USDT')
-        plt.title(f'Корреляция {self.symbol} и BTC/USDT')
-        plt.xlabel('Время')
-        plt.ylabel('Нормализованная цена')
-        plt.legend()
-        plt.grid(True)
-        plt.gca().xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%H:%M'))
+        for i, symbol in enumerate(self.symbols):
+            color = self.colors[i]
+            ax1.plot(self.timestamps, self.prices[symbol], color=color, label=f'{symbol} Цена')
+            ax2.plot(self.timestamps, self.volumes[symbol], color=color, label=f'{symbol} Объем')
+
+        ax1.set_ylabel('Цена')
+        ax1.legend(loc='upper left')
+        ax1.grid(True)
+        ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format_number(x)))
+
+        ax2.set_xlabel('Время')
+        ax2.set_ylabel('Объем')
+        ax2.legend(loc='upper left')
+        ax2.grid(True)
+        ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format_number(x)))
+
         plt.gcf().autofmt_xdate()
+        ax2.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%H:%M'))
+
+        plt.tight_layout()
 
         buf = BytesIO()
         plt.savefig(buf, format='png')
@@ -72,36 +100,28 @@ class CryptoAnalyzer:
 
         return buf
 
-    def create_price_volume_chart(self):
-        if len(self.crypto_prices) < 2:
+    def create_correlation_chart(self):
+        if len(self.timestamps) < 2:
             return None
 
-        fig, ax1 = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(12, 6))
 
-        # цена
-        ax1.set_xlabel('Время')
-        ax1.set_ylabel('Цена', color='tab:blue')
-        ax1.plot(self.timestamps, self.crypto_prices, color='tab:blue', label='Цена')
-        ax1.tick_params(axis='y', labelcolor='tab:blue')
+        for i, symbol in enumerate(self.symbols):
+            prices = np.array(self.prices[symbol])
+            norm_prices = (prices - np.mean(prices)) / np.std(prices)
+            ax.plot(self.timestamps, norm_prices, color=self.colors[i], label=symbol)
 
-        # объем
-        ax2 = ax1.twinx()
-        ax2.set_ylabel('Объем', color='tab:orange')
-        ax2.plot(self.timestamps, self.volumes, color='tab:orange', label='Объем')
-        ax2.tick_params(axis='y', labelcolor='tab:orange')
+        ax.set_xlabel('Время')
+        ax.set_ylabel('Нормализованная цена')
+        ax.legend(loc='upper left')
+        ax.grid(True)
 
-        # Настройка графика
-        plt.title(f'График котировок и объема торгов {self.symbol}')
-        fig.tight_layout()
+        plt.title('Корреляция цен криптовалют')
         plt.gcf().autofmt_xdate()
-        ax1.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%H:%M'))
+        ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%H:%M'))
 
-        # Добавление легенды
-        lines1, labels1 = ax1.get_legend_handles_labels()
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
+        plt.tight_layout()
 
-        # Сохранение графика
         buf = BytesIO()
         plt.savefig(buf, format='png')
         buf.seek(0)
@@ -116,7 +136,7 @@ class CryptoAnalyzer:
                 return
             except TimedOut:
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)  # Ждем секунду перед повторной попыткой
+                    await asyncio.sleep(1)
                 else:
                     logger.error(f"Failed to send message after {max_retries} attempts due to timeout")
             except TelegramError as e:
@@ -132,52 +152,12 @@ class CryptoAnalyzer:
                 return
             except TimedOut:
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)  # Ждем секунду перед повторной попыткой
+                    await asyncio.sleep(1)
                 else:
                     logger.error(f"Failed to send chart after {max_retries} attempts due to timeout")
             except TelegramError as e:
                 logger.error(f"Telegram error occurred: {e}")
                 return
-
-    async def update_prices(self):
-        try:
-            crypto_price, volume = self.get_price_and_volume(self.symbol)
-            btc_price, _ = self.get_price_and_volume('BTC/USDT')
-            analysis = self.analyze_prices(crypto_price, btc_price)
-
-            current_time = datetime.now()
-            self.crypto_prices.append(crypto_price)
-            self.btc_prices.append(btc_price)
-            self.volumes.append(volume)
-            self.timestamps.append(current_time)
-
-            if len(self.crypto_prices) > 100:
-                self.crypto_prices = self.crypto_prices[-100:]
-                self.btc_prices = self.btc_prices[-100:]
-                self.volumes = self.volumes[-100:]
-                self.timestamps = self.timestamps[-100:]
-
-            volume_change = ((volume - self.prev_volume) / self.prev_volume) * 100 if self.prev_volume else 0
-            volume_str = f"{volume:,.0f}" if volume >= 1_000_000 else f"{volume:,.2f}"
-
-            message = f"Цена {self.symbol}: {crypto_price:,.2f}\n"
-            message += f"Объем: {volume_str} (изменение: {volume_change:+.2f}%)\n"
-            message += f"BTC: {btc_price:,.2f}\n{analysis}"
-
-            await self.send_message(message)
-
-            price_volume_chart = self.create_price_volume_chart()
-            await self.send_chart(price_volume_chart)
-
-            if len(self.crypto_prices) % 5 == 0: #Каждые 5 минут шлем корреляцию
-                correlation_chart = self.create_correlation_chart()
-                await self.send_chart(correlation_chart)
-
-            self.prev_crypto_price = crypto_price
-            self.prev_btc_price = btc_price
-            self.prev_volume = volume
-        except Exception as e:
-            logger.error(f"An error occurred in update_prices: {e}")
 
     async def run(self, interval: int = 300):
         while True:
@@ -195,9 +175,10 @@ async def main():
 
     analyzer = CryptoAnalyzer(
         exchange_name=config['exchange_name'],
-        symbol=config['symbol'],
+        symbols=config['symbols'],
         telegram_token=config['telegram_token'],
-        chat_id=config['chat_id']
+        chat_id=config['chat_id'],
+        correlation_interval=config['correlation_interval']
     )
     await analyzer.run(interval=config['update_interval'])
 
