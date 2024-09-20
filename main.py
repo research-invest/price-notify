@@ -8,13 +8,24 @@ import numpy as np
 from datetime import datetime
 import json
 import logging
+import math
 
-logging.basicConfig(level=logging.WARN, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
 def format_number(number):
-    return f"{number:,.2f}".replace(',', ' ')
+    if number >= 1 or number == 0:
+        return f"{number:,.2f}".replace(',', ' ')
+    elif number >= 0.0001:
+        return f"{number:.4f}"
+    else:
+        if number > 0:
+            significant_digits = -math.floor(math.log10(number)) + 2
+            format_string = f"{{:.{significant_digits}f}}"
+            return format_string.format(number)
+        else:
+            return "0.00"  # Для отрицательных чисел или нуля
 
 
 class CryptoAnalyzer:
@@ -110,7 +121,14 @@ class CryptoAnalyzer:
             prices = np.array(self.prices[symbol])
             initial_price = prices[0]
             normalized_prices = (prices - initial_price) / initial_price * 100  # процентное изменение
-            ax.plot(self.timestamps, normalized_prices, color=self.colors[i], label=symbol)
+            line, = ax.plot(self.timestamps, normalized_prices, color=self.colors[i], label=symbol)
+            
+            # Добавляем аннотацию с текущей ценой
+            current_price = prices[-1]
+            ax.annotate(f'{symbol}: {current_price:.2f}', 
+                        xy=(self.timestamps[-1], normalized_prices[-1]),
+                        xytext=(5, 0), textcoords='offset points',
+                        ha='left', va='center', color=line.get_color())
 
         ax.set_xlabel('Время')
         ax.set_ylabel('Процентное изменение цены')
@@ -121,10 +139,7 @@ class CryptoAnalyzer:
         plt.gcf().autofmt_xdate()
         ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%H:%M'))
 
-        # Горизонтальная линия на уровне 0%
         ax.axhline(y=0, color='gray', linestyle='--')
-
-        # Формат для оси Y, чтобы показывать проценты
         ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.1f}%"))
 
         plt.tight_layout()
