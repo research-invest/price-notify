@@ -29,12 +29,11 @@ def format_number(number):
 
 
 class CryptoAnalyzer:
-    def __init__(self, exchange_name: str, symbols: list, telegram_token: str, chat_id: str, correlation_interval: int):
+    def __init__(self, exchange_name: str, symbols: list, telegram_token: str, chat_id: str):
         self.exchange = getattr(ccxt, exchange_name)()
         self.symbols = symbols
         self.bot = Bot(token=telegram_token)
         self.chat_id = chat_id
-        self.correlation_interval = correlation_interval
         self.prices = {symbol: [] for symbol in symbols}
         self.volumes = {symbol: [] for symbol in symbols}
         self.timestamps = []
@@ -93,10 +92,6 @@ class CryptoAnalyzer:
             price_volume_chart = self.create_price_volume_chart()
             await self.send_chart(price_volume_chart)
 
-            if len(self.timestamps) % self.correlation_interval == 0:
-                correlation_chart = self.create_correlation_chart()
-                await self.send_chart(correlation_chart)
-
         except Exception as e:
             logger.error(f"An error occurred in update_prices: {e}")
 
@@ -108,33 +103,33 @@ class CryptoAnalyzer:
 
         for i, symbol in enumerate(self.symbols):
             color = self.colors[i]
-            
+
             # Нормализация цен
             prices = np.array(self.prices[symbol])
             initial_price = prices[0]
             normalized_prices = (prices - initial_price) / initial_price * 100  # процентное изменение
-            
+
             # График цены
             line, = ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена')
-            
+
             # Нормализация объемов
             volumes = np.array(self.volumes[symbol])
             initial_volume = volumes[0]
             normalized_volumes = (volumes - initial_volume) / initial_volume * 100  # процентное изменение
-            
+
             # График объема
             ax2.plot(self.timestamps, normalized_volumes, color=color, label=f'{symbol} Объем')
-            
+
             # Аннотация с текущей ценой
             ax1.annotate(f'{symbol}: {format_number(prices[-1])}',
                          xy=(self.timestamps[-1], normalized_prices[-1]),
                          xytext=(5, 0), textcoords='offset points',
                          ha='left', va='center', color=color)
-            
+
             # Аннотация с текущим объемом
             current_volume = volumes[-1]
             formatted_volume = format_number(current_volume)
-            ax2.annotate(f'{symbol}: {formatted_volume}', 
+            ax2.annotate(f'{symbol}: {formatted_volume}',
                          xy=(self.timestamps[-1], normalized_volumes[-1]),
                          xytext=(5, 0), textcoords='offset points',
                          ha='left', va='center', color=color)
@@ -154,45 +149,6 @@ class CryptoAnalyzer:
 
         plt.gcf().autofmt_xdate()
         ax2.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%H:%M'))
-
-        plt.tight_layout()
-
-        buf = BytesIO()
-        plt.savefig(buf, format='png')
-        buf.seek(0)
-        plt.close()
-
-        return buf
-
-    def create_correlation_chart(self):
-        if len(self.timestamps) < 2:
-            return None
-
-        fig, ax = plt.subplots(figsize=(12, 6))
-
-        for i, symbol in enumerate(self.symbols):
-            prices = np.array(self.prices[symbol])
-            initial_price = prices[0]
-            normalized_prices = (prices - initial_price) / initial_price * 100  # процентное изменение
-            line, = ax.plot(self.timestamps, normalized_prices, color=self.colors[i], label=symbol)
-            
-            # Добавляем аннотацию с текущей ценой
-            ax.annotate(f'{symbol}: {format_number(prices[-1])}',
-                        xy=(self.timestamps[-1], normalized_prices[-1]),
-                        xytext=(5, 0), textcoords='offset points',
-                        ha='left', va='center', color=line.get_color())
-
-        ax.set_xlabel('Время')
-        ax.set_ylabel('Процентное изменение цены')
-        ax.legend(loc='upper left')
-        ax.grid(True)
-
-        plt.title('Сравнение изменения цен криптовалют')
-        plt.gcf().autofmt_xdate()
-        ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%H:%M'))
-
-        ax.axhline(y=0, color='gray', linestyle='--')
-        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.1f}%"))
 
         plt.tight_layout()
 
@@ -252,7 +208,6 @@ async def main():
         symbols=config['symbols'],
         telegram_token=config['telegram_token'],
         chat_id=config['chat_id'],
-        correlation_interval=config['correlation_interval']
     )
     await analyzer.run(interval=config['update_interval'])
 
