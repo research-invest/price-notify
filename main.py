@@ -39,6 +39,28 @@ class CryptoAnalyzer:
         self.volumes = {symbol: [] for symbol in symbols}
         self.timestamps = []
         self.colors = plt.cm.rainbow(np.linspace(0, 1, len(symbols)))
+        self.prev_prices = {symbol: None for symbol in symbols}
+
+    def analyze_prices(self, symbol: str, current_price: float) -> str:
+        if self.prev_prices[symbol] is None:
+            self.prev_prices[symbol] = current_price
+            return "Недостаточно данных для анализа."
+
+        price_change = (current_price - self.prev_prices[symbol]) / self.prev_prices[symbol]
+
+        if price_change > 0.02:
+            analysis = "Цена значительно выросла! Рекомендация: Рассмотрите продажу."
+        elif price_change < -0.02:
+            analysis = "Цена значительно упала! Рекомендация: Рассмотрите покупку."
+        elif 0.005 < price_change <= 0.02:
+            analysis = "Наблюдается умеренный рост. Следите за трендом."
+        elif -0.02 <= price_change < -0.005:
+            analysis = "Наблюдается умеренное снижение. Следите за трендом."
+        else:
+            analysis = "Цена стабильна."
+
+        self.prev_prices[symbol] = current_price
+        return analysis
 
     def get_price_and_volume(self, symbol: str):
         ticker = self.exchange.fetch_ticker(symbol)
@@ -57,7 +79,8 @@ class CryptoAnalyzer:
 
                 formatted_price = format_number(price)
                 formatted_volume = format_number(volume)
-                message += f"{symbol}:\nЦена: {formatted_price}\nОбъем: {formatted_volume}\n\n"
+                analysis = self.analyze_prices(symbol, price)
+                message += f"{symbol}:\nЦена: {formatted_price}\nОбъем: {formatted_volume}\nАнализ: {analysis}\n\n"
 
             if len(self.timestamps) > 100:
                 self.timestamps = self.timestamps[-100:]
@@ -85,19 +108,49 @@ class CryptoAnalyzer:
 
         for i, symbol in enumerate(self.symbols):
             color = self.colors[i]
-            ax1.plot(self.timestamps, self.prices[symbol], color=color, label=f'{symbol} Цена')
-            ax2.plot(self.timestamps, self.volumes[symbol], color=color, label=f'{symbol} Объем')
+            
+            # Нормализация цен
+            prices = np.array(self.prices[symbol])
+            initial_price = prices[0]
+            normalized_prices = (prices - initial_price) / initial_price * 100  # процентное изменение
+            
+            # График цены
+            line, = ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена')
+            
+            # Нормализация объемов
+            volumes = np.array(self.volumes[symbol])
+            initial_volume = volumes[0]
+            normalized_volumes = (volumes - initial_volume) / initial_volume * 100  # процентное изменение
+            
+            # График объема
+            ax2.plot(self.timestamps, normalized_volumes, color=color, label=f'{symbol} Объем')
+            
+            # Аннотация с текущей ценой
+            ax1.annotate(f'{symbol}: {format_number(prices[-1])}',
+                         xy=(self.timestamps[-1], normalized_prices[-1]),
+                         xytext=(5, 0), textcoords='offset points',
+                         ha='left', va='center', color=color)
+            
+            # Аннотация с текущим объемом
+            current_volume = volumes[-1]
+            formatted_volume = format_number(current_volume)
+            ax2.annotate(f'{symbol}: {formatted_volume}', 
+                         xy=(self.timestamps[-1], normalized_volumes[-1]),
+                         xytext=(5, 0), textcoords='offset points',
+                         ha='left', va='center', color=color)
 
-        ax1.set_ylabel('Цена')
+        ax1.set_ylabel('Процентное изменение цены')
         ax1.legend(loc='upper left')
         ax1.grid(True)
-        ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format_number(x)))
+        ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.1f}%"))
+        ax1.axhline(y=0, color='gray', linestyle='--')
 
         ax2.set_xlabel('Время')
-        ax2.set_ylabel('Объем')
+        ax2.set_ylabel('Процентное изменение объема')
         ax2.legend(loc='upper left')
         ax2.grid(True)
-        ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format_number(x)))
+        ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.1f}%"))
+        ax2.axhline(y=0, color='gray', linestyle='--')
 
         plt.gcf().autofmt_xdate()
         ax2.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%H:%M'))
@@ -124,8 +177,7 @@ class CryptoAnalyzer:
             line, = ax.plot(self.timestamps, normalized_prices, color=self.colors[i], label=symbol)
             
             # Добавляем аннотацию с текущей ценой
-            current_price = prices[-1]
-            ax.annotate(f'{symbol}: {current_price:.2f}', 
+            ax.annotate(f'{symbol}: {format_number(prices[-1])}',
                         xy=(self.timestamps[-1], normalized_prices[-1]),
                         xytext=(5, 0), textcoords='offset points',
                         ha='left', va='center', color=line.get_color())
