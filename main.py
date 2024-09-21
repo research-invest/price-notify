@@ -45,7 +45,7 @@ class CryptoAnalyzer:
         if len(prices) < 10:  # Минимальное количество точек для анализа
             return "Недостаточно данных для анализа."
 
-        # Расчет процентного изменения за последние 10 периодов
+        # Расчет процентного изменения за последние периоды
         changes = np.diff(prices[-10:]) / prices[-11:-1] * 100
         avg_change = np.mean(changes)
 
@@ -61,7 +61,7 @@ class CryptoAnalyzer:
 
         # Формирование анализа и рекомендаций
         analysis = f"Тренд: {trend}. "
-        analysis += f"Среднее изменение за последние 10 периодов: {avg_change:.2f}%. "
+        analysis += f"Среднее изменение за последние периоды: {avg_change:.2f}%. "
         analysis += f"Волатильность: {volatility:.2f}%. "
 
         if current_price > ma5 > ma10:
@@ -102,7 +102,12 @@ class CryptoAnalyzer:
 
                 formatted_price = format_number(price)
                 formatted_volume = format_number(volume)
-                analysis = self.analyze_prices(symbol, price)
+                
+                if len(self.prices[symbol]) >= 2:  # Проверяем, есть ли хотя бы два значения цены
+                    analysis = self.analyze_prices(symbol, price)
+                else:
+                    analysis = "Недостаточно данных для анализа."
+                
                 message += f"{symbol}:\nЦена: {formatted_price}\nОбъем: {formatted_volume}\nАнализ: {analysis}\n\n"
 
             if len(self.timestamps) > 100:
