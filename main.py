@@ -137,8 +137,10 @@ class CryptoAnalyzer:
 
             # График цены
             linewidth = 3 if i == 0 else 1  # Делаем линию Bitcoin толще
-            line, = ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена', linewidth=linewidth)
-            
+            linestyle = '-' if i == 0 else '--'
+            line, = ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена',
+                             linewidth=linewidth, linestyle=linestyle)
+
             # Аннотации для цен
             for j, (timestamp, norm_price, price) in enumerate(zip(self.timestamps, normalized_prices, prices)):
                 if j % everyAnnotation == 0 or j == len(prices) - 1:
