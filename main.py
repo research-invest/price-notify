@@ -125,7 +125,7 @@ class CryptoAnalyzer:
 
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
 
-        everyAnnotation = 10
+        everyAnnotation = 10  # Аннотируем каждую 10-ю точку
 
         for i, symbol in enumerate(self.symbols):
             color = self.colors[i]
@@ -136,7 +136,8 @@ class CryptoAnalyzer:
             normalized_prices = (prices - initial_price) / initial_price * 100
 
             # График цены
-            line, = ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена')
+            linewidth = 3 if i == 0 else 1  # Делаем линию Bitcoin толще
+            line, = ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена', linewidth=linewidth)
             
             # Аннотации для цен
             for j, (timestamp, norm_price, price) in enumerate(zip(self.timestamps, normalized_prices, prices)):
@@ -153,7 +154,7 @@ class CryptoAnalyzer:
             normalized_volumes = (volumes - initial_volume) / initial_volume * 100
             
             # График объема
-            ax2.plot(self.timestamps, normalized_volumes, color=color, label=f'{symbol} Объем')
+            ax2.plot(self.timestamps, normalized_volumes, color=color, label=f'{symbol} Объем', linewidth=linewidth)
             
             # Аннотации для объемов
             for j, (timestamp, norm_volume, volume) in enumerate(zip(self.timestamps, normalized_volumes, volumes)):
