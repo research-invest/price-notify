@@ -41,24 +41,48 @@ class CryptoAnalyzer:
         self.prev_prices = {symbol: None for symbol in symbols}
 
     def analyze_prices(self, symbol: str, current_price: float) -> str:
-        if self.prev_prices[symbol] is None:
-            self.prev_prices[symbol] = current_price
+        prices = np.array(self.prices[symbol])
+        if len(prices) < 10:  # Минимальное количество точек для анализа
             return "Недостаточно данных для анализа."
 
-        price_change = (current_price - self.prev_prices[symbol]) / self.prev_prices[symbol]
+        # Расчет процентного изменения за последние 10 периодов
+        changes = np.diff(prices[-10:]) / prices[-11:-1] * 100
+        avg_change = np.mean(changes)
 
-        if price_change > 0.02:
-            analysis = "Цена значительно выросла! Рекомендация: Рассмотрите продажу."
-        elif price_change < -0.02:
-            analysis = "Цена значительно упала! Рекомендация: Рассмотрите покупку."
-        elif 0.005 < price_change <= 0.02:
-            analysis = "Наблюдается умеренный рост. Следите за трендом."
-        elif -0.02 <= price_change < -0.005:
-            analysis = "Наблюдается умеренное снижение. Следите за трендом."
+        # Определение тренда
+        trend = "восходящий" if avg_change > 0.5 else "нисходящий" if avg_change < -0.5 else "боковой"
+
+        # Расчет волатильности (стандартное отклонение изменений)
+        volatility = np.std(changes)
+
+        # Расчет скользящих средних
+        ma5 = np.mean(prices[-5:])
+        ma10 = np.mean(prices[-10:])
+
+        # Формирование анализа и рекомендаций
+        analysis = f"Тренд: {trend}. "
+        analysis += f"Среднее изменение за последние 10 периодов: {avg_change:.2f}%. "
+        analysis += f"Волатильность: {volatility:.2f}%. "
+
+        if current_price > ma5 > ma10:
+            analysis += "Цена выше MA5 и MA10. Возможен продолжающийся рост. "
+        elif current_price < ma5 < ma10:
+            analysis += "Цена ниже MA5 и MA10. Возможно продолжение снижения. "
+        elif ma5 > current_price > ma10:
+            analysis += "Цена между MA5 и MA10. Возможна консолидация. "
+
+        if volatility > 2:
+            analysis += "Высокая волатильность. Будьте осторожны. "
+        elif volatility < 0.5:
+            analysis += "Низкая волатильность. Возможен скорый всплеск активности. "
+
+        if trend == "восходящий" and current_price > ma10:
+            analysis += "Рекомендация: Рассмотрите покупку или удержание позиции. "
+        elif trend == "нисходящий" and current_price < ma10:
+            analysis += "Рекомендация: Рассмотрите продажу или сокращение позиции. "
         else:
-            analysis = "Цена стабильна."
+            analysis += "Рекомендация: Наблюдайте за развитием ситуации. "
 
-        self.prev_prices[symbol] = current_price
         return analysis
 
     def get_price_and_volume(self, symbol: str):
@@ -101,6 +125,8 @@ class CryptoAnalyzer:
 
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
 
+        everyAnnotation = 10
+
         for i, symbol in enumerate(self.symbols):
             color = self.colors[i]
             
@@ -114,7 +140,7 @@ class CryptoAnalyzer:
             
             # Аннотации для цен
             for j, (timestamp, norm_price, price) in enumerate(zip(self.timestamps, normalized_prices, prices)):
-                if j % 3 == 0 or j == len(prices) - 1:  # Аннотируем каждую 3-ю точку и последнюю
+                if j % everyAnnotation == 0 or j == len(prices) - 1:
                     ax1.annotate(f'{format_number(price)}', 
                                  xy=(timestamp, norm_price),
                                  xytext=(0, 5), textcoords='offset points',
@@ -131,7 +157,7 @@ class CryptoAnalyzer:
             
             # Аннотации для объемов
             for j, (timestamp, norm_volume, volume) in enumerate(zip(self.timestamps, normalized_volumes, volumes)):
-                if j % 3 == 0 or j == len(volumes) - 1:  # Аннотируем каждую 3-ю точку и последнюю
+                if j % everyAnnotation == 0 or j == len(volumes) - 1:
                     ax2.annotate(f'{format_number(volume)}', 
                                  xy=(timestamp, norm_volume),
                                  xytext=(0, 5), textcoords='offset points',
