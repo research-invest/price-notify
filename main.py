@@ -10,7 +10,7 @@ import json
 import logging
 import math
 
-logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
@@ -42,22 +42,26 @@ class CryptoAnalyzer:
 
     def analyze_prices(self, symbol: str, current_price: float) -> str:
         prices = np.array(self.prices[symbol])
-        if len(prices) < 10:  # Минимальное количество точек для анализа
+        if len(prices) < 2:  # Минимальное количество точек для анализа
             return "Недостаточно данных для анализа."
 
-        # Расчет процентного изменения за последние периоды
-        changes = np.diff(prices[-10:]) / prices[-11:-1] * 100
-        avg_change = np.mean(changes)
+        # Расчет процентного изменения
+        changes = np.diff(prices) / prices[:-1] * 100
+        
+        # Используем последние 10 изменений или меньше, если данных недостаточно
+        last_changes = changes[-min(10, len(changes)):]
+        
+        avg_change = np.mean(last_changes)
 
         # Определение тренда
         trend = "восходящий" if avg_change > 0.5 else "нисходящий" if avg_change < -0.5 else "боковой"
 
         # Расчет волатильности (стандартное отклонение изменений)
-        volatility = np.std(changes)
+        volatility = np.std(last_changes)
 
         # Расчет скользящих средних
-        ma5 = np.mean(prices[-5:])
-        ma10 = np.mean(prices[-10:])
+        ma5 = np.mean(prices[-min(5, len(prices)):])
+        ma10 = np.mean(prices[-min(10, len(prices)):])
 
         # Формирование анализа и рекомендаций
         analysis = f"Тренд: {trend}. "
