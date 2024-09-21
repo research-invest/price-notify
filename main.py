@@ -129,7 +129,7 @@ class CryptoAnalyzer:
 
         for i, symbol in enumerate(self.symbols):
             color = self.colors[i]
-            
+
             # Нормализация цен
             prices = np.array(self.prices[symbol])
             initial_price = prices[0]
@@ -144,7 +144,7 @@ class CryptoAnalyzer:
             # Аннотации для цен
             for j, (timestamp, norm_price, price) in enumerate(zip(self.timestamps, normalized_prices, prices)):
                 if j % everyAnnotation == 0 or j == len(prices) - 1:
-                    ax1.annotate(f'{format_number(price)}', 
+                    ax1.annotate(f'{format_number(price)}',
                                  xy=(timestamp, norm_price),
                                  xytext=(0, 5), textcoords='offset points',
                                  ha='center', va='bottom', color=color,
@@ -154,14 +154,15 @@ class CryptoAnalyzer:
             volumes = np.array(self.volumes[symbol])
             initial_volume = volumes[0]
             normalized_volumes = (volumes - initial_volume) / initial_volume * 100
-            
+
             # График объема
-            ax2.plot(self.timestamps, normalized_volumes, color=color, label=f'{symbol} Объем', linewidth=linewidth)
-            
+            ax2.plot(self.timestamps, normalized_volumes, color=color, label=f'{symbol} Объем', linewidth=linewidth,
+                     linestyle=linestyle)
+
             # Аннотации для объемов
             for j, (timestamp, norm_volume, volume) in enumerate(zip(self.timestamps, normalized_volumes, volumes)):
                 if j % everyAnnotation == 0 or j == len(volumes) - 1:
-                    ax2.annotate(f'{format_number(volume)}', 
+                    ax2.annotate(f'{format_number(volume)}',
                                  xy=(timestamp, norm_volume),
                                  xytext=(0, 5), textcoords='offset points',
                                  ha='center', va='bottom', color=color,
