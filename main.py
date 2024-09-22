@@ -5,10 +5,11 @@ from telegram.error import TimedOut, TelegramError
 import matplotlib.pyplot as plt
 from io import BytesIO
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import logging
 import math
+from database import DatabaseManager
 
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ def format_number(number):
 
 
 class CryptoAnalyzer:
-    def __init__(self, exchange_name: str, symbols: list, telegram_token: str, chat_id: str):
+    def __init__(self, exchange_name: str, symbols: list, telegram_token: str, chat_id: str, db_config: dict):
         self.exchange = getattr(ccxt, exchange_name)()
         self.symbols = symbols
         self.bot = Bot(token=telegram_token)
@@ -38,12 +39,20 @@ class CryptoAnalyzer:
         self.volumes = {symbol: [] for symbol in symbols}
         self.timestamps = []
         self.colors = plt.cm.rainbow(np.linspace(0, 1, len(symbols)))
-        self.prev_prices = {symbol: None for symbol in symbols}
+        self.db_manager = DatabaseManager(db_config)
+        self.db_manager.connect()
+        self.db_manager.create_tables()
 
     def analyze_prices(self, symbol: str, current_price: float) -> str:
-        prices = np.array(self.prices[symbol])
-        if len(prices) < 2:  # Минимальное количество точек для анализа
-            return "Недостаточно данных для анализа."
+        # Получаем исторические данные за последние 30 дней
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=30)
+        historical_data = self.db_manager.get_historical_data(symbol, start_date, end_date)
+
+        if len(historical_data) < 2:
+            return "Недостаточно исторических данных для анализа."
+
+        prices = np.array([row[1] for row in historical_data])
 
         # Расчет процентного изменения
         changes = np.diff(prices) / prices[:-1] * 100
@@ -104,6 +113,9 @@ class CryptoAnalyzer:
                 self.prices[symbol].append(price)
                 self.volumes[symbol].append(volume)
 
+                # Сохранение данных в БД
+                self.db_manager.save_price_data(symbol, current_time, price, volume)
+
                 formatted_price = format_number(price)
                 formatted_volume = format_number(volume)
                 
@@ -138,18 +150,18 @@ class CryptoAnalyzer:
 
         for i, symbol in enumerate(self.symbols):
             color = self.colors[i]
-
+            
             # Нормализация цен
             prices = np.array(self.prices[symbol])
             initial_price = prices[0]
             normalized_prices = (prices - initial_price) / initial_price * 100
 
             # График цены
-            linewidth = 3 if i == 0 else 1  # Делаем линию Bitcoin толще
-            linestyle = '-' if i == 0 else '--'
+            linewidth = 2 if i == 0 else 1  # Делаем линию Bitcoin толще
+            linestyle = '-'
             line, = ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена',
                              linewidth=linewidth, linestyle=linestyle)
-
+            
             # Аннотации для цен
             for j, (timestamp, norm_price, price) in enumerate(zip(self.timestamps, normalized_prices, prices)):
                 if j % everyAnnotation == 0 or j == len(prices) - 1:
@@ -163,11 +175,11 @@ class CryptoAnalyzer:
             volumes = np.array(self.volumes[symbol])
             initial_volume = volumes[0]
             normalized_volumes = (volumes - initial_volume) / initial_volume * 100
-
+            
             # График объема
             ax2.plot(self.timestamps, normalized_volumes, color=color, label=f'{symbol} Объем', linewidth=linewidth,
                      linestyle=linestyle)
-
+            
             # Аннотации для объемов
             for j, (timestamp, norm_volume, volume) in enumerate(zip(self.timestamps, normalized_volumes, volumes)):
                 if j % everyAnnotation == 0 or j == len(volumes) - 1:
@@ -251,6 +263,7 @@ async def main():
         symbols=config['symbols'],
         telegram_token=config['telegram_token'],
         chat_id=config['chat_id'],
+         db_config=config['db']
     )
     await analyzer.run(interval=config['update_interval'])
 

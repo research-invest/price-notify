@@ -3,5 +3,11 @@
     "symbols": ["TAO/USDT", "BTC/USDT", "ETH/USDT", "XRP/USDT", "ADA/USDT"],
     "telegram_token": "7488441527:AAGTVhhaXIglh94t9dTLWOAlaxHMELsWi9c",
     "chat_id": "192218810",
-    "update_interval": 60
+    "update_interval": 60,
+    "db": {
+        "host": "localhost",
+        "database": "your_database_name",
+        "user": "your_username",
+        "password": "your_password"
+    }
 }
