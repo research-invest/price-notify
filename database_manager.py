@@ -3,6 +3,7 @@ from mysql.connector import Error
 from datetime import datetime
 import time
 
+
 class DatabaseManager:
     def __init__(self, db_config: dict):
         self.db_config = db_config
@@ -32,12 +33,31 @@ class DatabaseManager:
         """
         self._execute_query(create_table_query)
 
+        create_trades_table_query = """
+        CREATE TABLE IF NOT EXISTS trades (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            symbol VARCHAR(20) NOT NULL,
+            trade_type ENUM('buy', 'sell') NOT NULL,
+            price DECIMAL(20, 8) NOT NULL,
+            amount DECIMAL(20, 8) NOT NULL,
+            timestamp DATETIME NOT NULL
+        );
+        """
+        self._execute_query(create_trades_table_query)
+
     def save_price_data(self, symbol: str, timestamp: datetime, price: float, volume: float):
         insert_query = """
             INSERT INTO price_history (symbol, timestamp, price, volume)
             VALUES (%s, %s, %s, %s)
         """
         self._execute_query(insert_query, (symbol, timestamp, price, volume))
+
+    def add_trade(self, symbol: str, trade_type: str, price: float, amount: float, timestamp: datetime):
+        insert_query = """
+        INSERT INTO trades (symbol, trade_type, price, amount, timestamp)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+        self._execute_query(insert_query, (symbol, trade_type, price, amount, timestamp))
 
     def get_historical_data(self, symbol: str, start_date: datetime, end_date: datetime):
         select_query = """
@@ -48,13 +68,14 @@ class DatabaseManager:
         """
         return self._fetch_data(select_query, (symbol, start_date, end_date))
 
-    def update_price_data(self, symbol: str, timestamp: datetime, price: float, volume: float):
-        update_query = """
-            UPDATE price_history
-            SET price = %s, volume = %s
-            WHERE symbol = %s AND timestamp = %s
+    def get_trades(self, symbol: str, start_date: datetime, end_date: datetime):
+        select_query = """
+        SELECT trade_type, price, amount, timestamp
+        FROM trades
+        WHERE symbol = %s AND timestamp BETWEEN %s AND %s
+        ORDER BY timestamp
         """
-        self._execute_query(update_query, (price, volume, symbol, timestamp))
+        return self._fetch_data(select_query, (symbol, start_date, end_date))
 
     def _execute_query(self, query, params=None):
         max_retries = 3
@@ -62,7 +83,7 @@ class DatabaseManager:
             try:
                 if not self.connection or not self.connection.is_connected():
                     self.connect()
-                
+
                 with self.connection.cursor() as cursor:
                     if params:
                         cursor.execute(query, params)
@@ -82,7 +103,7 @@ class DatabaseManager:
             try:
                 if not self.connection or not self.connection.is_connected():
                     self.connect()
-                
+
                 with self.connection.cursor() as cursor:
                     if params:
                         cursor.execute(query, params)
