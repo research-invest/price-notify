@@ -42,96 +42,79 @@ class CryptoAnalyzer:
         self.db_manager = DatabaseManager(db_config)
         self.db_manager.connect()
         self.db_manager.create_tables()
+        self.load_historical_data()
 
-    def analyze_prices(self, symbol: str, current_price: float) -> str:
-        try:
-            # Получаем исторические данные за последние 30 дней
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=30)
+    def load_historical_data(self):
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=30)
+        all_timestamps = set()
+        
+        # Сначала соберем все уникальные временные метки
+        for symbol in self.symbols:
             historical_data = self.db_manager.get_historical_data(symbol, start_date, end_date)
+            all_timestamps.update(row[0] for row in historical_data)
+        
+        # Отсортируем временные метки
+        self.timestamps = sorted(all_timestamps)
+        
+        # Теперь заполним данные для каждого символа
+        for symbol in self.symbols:
+            historical_data = self.db_manager.get_historical_data(symbol, start_date, end_date)
+            data_dict = {row[0]: (float(row[1]), float(row[2])) for row in historical_data}
             
-            if len(historical_data) < 2:
-                return "Недостаточно исторических данных для анализа."
-
-            prices = np.array([row[1] for row in historical_data])
-
-            # Расчет процентного изменения
-            changes = np.diff(prices) / prices[:-1] * 100
+            self.prices[symbol] = []
+            self.volumes[symbol] = []
             
-            # Используем последние 10 изменений или меньше, если данных недостаточно
-            last_changes = changes[-min(10, len(changes)):]
+            for timestamp in self.timestamps:
+                if timestamp in data_dict:
+                    self.prices[symbol].append(data_dict[timestamp][0])
+                    self.volumes[symbol].append(data_dict[timestamp][1])
+                else:
+                    # Если данных нет, используем предыдущее значение или None
+                    self.prices[symbol].append(self.prices[symbol][-1] if self.prices[symbol] else None)
+                    self.volumes[symbol].append(self.volumes[symbol][-1] if self.volumes[symbol] else None)
             
-            avg_change = np.mean(last_changes)
-
-            # Определение тренда
-            trend = "восходящий" if avg_change > 0.5 else "нисходящий" if avg_change < -0.5 else "боковой"
-
-            # Расчет волатильности (стандартное отклонение изменений)
-            volatility = np.std(last_changes)
-
-            # Расчет скользящих средних
-            ma5 = np.mean(prices[-min(5, len(prices)):])
-            ma10 = np.mean(prices[-min(10, len(prices)):])
-
-            # Формирование анализа и рекомендаций
-            analysis = f"Тренд: {trend}. "
-            analysis += f"Среднее изменение за последние периоды: {avg_change:.2f}%. "
-            analysis += f"Волатильность: {volatility:.2f}%. "
-
-            if current_price > ma5 > ma10:
-                analysis += "Цена выше MA5 и MA10. Возможен продолжающийся рост. "
-            elif current_price < ma5 < ma10:
-                analysis += "Цена ниже MA5 и MA10. Возможно продолжение снижения. "
-            elif ma5 > current_price > ma10:
-                analysis += "Цена между MA5 и MA10. Возможна консолидация. "
-
-            if volatility > 2:
-                analysis += "Высокая волатильность. Будьте осторожны. "
-            elif volatility < 0.5:
-                analysis += "Низкая волатильность. Возможен скорый всплеск активности. "
-
-            if trend == "восходящий" and current_price > ma10:
-                analysis += "Рекомендация: Рассмотрите покупку или удержание позиции. "
-            elif trend == "нисходящий" and current_price < ma10:
-                analysis += "Рекомендация: Рассмотрите продажу или сокращение позиции. "
-            else:
-                analysis += "Рекомендация: Наблюдайте за развитием ситуации. "
-
-            return analysis
-
-        except Exception as e:
-            logger.error(f"Ошибка при анализе цен: {e}")
-            return "Произошла ошибка при анализе цен."
-
-    def get_price_and_volume(self, symbol: str):
-        ticker = self.exchange.fetch_ticker(symbol)
-        return ticker['last'], ticker['quoteVolume']
+            logger.info(f"Загружено {len(historical_data)} исторических записей для {symbol}")
 
     async def update_prices(self):
         try:
             current_time = datetime.now()
-            self.timestamps.append(current_time)
+            
+            if not self.timestamps or current_time > self.timestamps[-1]:
+                self.timestamps.append(current_time)
+                for symbol in self.symbols:
+                    price, volume = self.get_price_and_volume(symbol)
+                    price = float(price)
+                    volume = float(volume)
+                    
+                    self.prices[symbol].append(price)
+                    self.volumes[symbol].append(volume)
+                    
+                    # Сохранение данных в БД
+                    try:
+                        self.db_manager.save_price_data(symbol, current_time, price, volume)
+                    except Exception as db_error:
+                        logger.error(f"Ошибка при сохранении данных в БД: {db_error}")
+            else:
+                # Обновляем последнюю запись, если время совпадает
+                for symbol in self.symbols:
+                    price, volume = self.get_price_and_volume(symbol)
+                    price = float(price)
+                    volume = float(volume)
+                    
+                    self.prices[symbol][-1] = price
+                    self.volumes[symbol][-1] = volume
+                    # Обновляем запись в БД
+                    try:
+                        self.db_manager.update_price_data(symbol, current_time, price, volume)
+                    except Exception as db_error:
+                        logger.error(f"Ошибка при обновлении данных в БД: {db_error}")
 
-            message = ""
+            message = ''
             for symbol in self.symbols:
-                price, volume = self.get_price_and_volume(symbol)
-                self.prices[symbol].append(price)
-                self.volumes[symbol].append(volume)
-
-                # Сохранение данных в БД
-                try:
-                    self.db_manager.save_price_data(symbol, current_time, price, volume)
-                except Exception as db_error:
-                    logger.error(f"Ошибка при сохранении данных в БД: {db_error}")
-
-                formatted_price = format_number(price)
-                formatted_volume = format_number(volume)
-                
-                if len(self.prices[symbol]) >= 2:  # Проверяем, есть ли хотя бы два значения цены
-                    analysis = self.analyze_prices(symbol, price)
-                else:
-                    analysis = "Недостаточно данных для анализа."
-                
+                formatted_price = format_number(self.prices[symbol][-1])
+                formatted_volume = format_number(self.volumes[symbol][-1])
+                analysis = self.analyze_prices(symbol, self.prices[symbol][-1])
                 message += f"{symbol}:\nЦена: {formatted_price}\nОбъем: {formatted_volume}\nАнализ: {analysis}\n\n"
 
             if len(self.timestamps) > 100:
@@ -148,15 +131,67 @@ class CryptoAnalyzer:
         except Exception as e:
             logger.error(f"An error occurred in update_prices: {e}")
 
+    def analyze_prices(self, symbol: str, current_price: float) -> str:
+        if len(self.prices[symbol]) < 2:
+            return "Недостаточно данных для анализа."
+
+        prices = np.array(self.prices[symbol], dtype=float)
+        
+        # Расчет процентного изменения
+        changes = np.diff(prices) / prices[:-1] * 100
+        avg_change = np.mean(changes)
+
+        # Определение тренда
+        trend = "восходящий" if avg_change > 0.5 else "нисходящий" if avg_change < -0.5 else "боковой"
+
+        # Расчет волатильности (стандартное отклонение изменений)
+        volatility = np.std(changes)
+
+        # Расчет скользящих средних
+        ma5 = np.mean(prices[-min(5, len(prices)):])
+        ma10 = np.mean(prices[-min(10, len(prices)):])
+
+        # Формирование анализа и рекомендаций
+        analysis = f"Тренд: {trend}. "
+        analysis += f"Среднее изменение за последние периоды: {avg_change:.2f}%. "
+        analysis += f"Волатильность: {volatility:.2f}%. "
+
+        if current_price > ma5 > ma10:
+            analysis += "Цена выше MA5 и MA10. Возможен продолжающийся рост. "
+        elif current_price < ma5 < ma10:
+            analysis += "Цена ниже MA5 и MA10. Возможно продолжение снижения. "
+        elif ma5 > current_price > ma10:
+            analysis += "Цена между MA5 и MA10. Возможна консолидация. "
+
+        if volatility > 2:
+            analysis += "Высокая волатильность. Будьте осторожны. "
+        elif volatility < 0.5:
+            analysis += "Низкая волатильность. Возможен скорый всплеск активности. "
+
+        if trend == "восходящий" and current_price > ma10:
+            analysis += "Рекомендация: Рассмотрите покупку или удержание позиции. "
+        elif trend == "нисходящий" and current_price < ma10:
+            analysis += "Рекомендация: Рассмотрите продажу или сокращение позиции. "
+        else:
+            analysis += "Рекомендация: Наблюдайте за развитием ситуации. "
+
+        return analysis
+
+    def get_price_and_volume(self, symbol: str):
+        ticker = self.exchange.fetch_ticker(symbol)
+        return ticker['last'], ticker['quoteVolume']
+
     def create_price_volume_chart(self):
         if len(self.timestamps) < 2:
             return None
 
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
 
-        everyAnnotation = 10  # Аннотируем каждую 10-ю точку
-
         for i, symbol in enumerate(self.symbols):
+            if len(self.prices[symbol]) != len(self.timestamps):
+                logger.warning(f"Несоответствие данных для {symbol}. Пропуск построения графика.")
+                continue
+
             color = self.colors[i]
             
             # Нормализация цен
@@ -165,37 +200,15 @@ class CryptoAnalyzer:
             normalized_prices = (prices - initial_price) / initial_price * 100
 
             # График цены
-            linewidth = 2 if i == 0 else 1  # Делаем линию Bitcoin толще
-            linestyle = '-'
-            line, = ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена',
-                             linewidth=linewidth, linestyle=linestyle)
+            ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена')
             
-            # Аннотации для цен
-            for j, (timestamp, norm_price, price) in enumerate(zip(self.timestamps, normalized_prices, prices)):
-                if j % everyAnnotation == 0 or j == len(prices) - 1:
-                    ax1.annotate(f'{format_number(price)}',
-                                 xy=(timestamp, norm_price),
-                                 xytext=(0, 5), textcoords='offset points',
-                                 ha='center', va='bottom', color=color,
-                                 fontsize=8, rotation=45)
-
             # Нормализация объемов
             volumes = np.array(self.volumes[symbol])
             initial_volume = volumes[0]
             normalized_volumes = (volumes - initial_volume) / initial_volume * 100
             
             # График объема
-            ax2.plot(self.timestamps, normalized_volumes, color=color, label=f'{symbol} Объем', linewidth=linewidth,
-                     linestyle=linestyle)
-            
-            # Аннотации для объемов
-            for j, (timestamp, norm_volume, volume) in enumerate(zip(self.timestamps, normalized_volumes, volumes)):
-                if j % everyAnnotation == 0 or j == len(volumes) - 1:
-                    ax2.annotate(f'{format_number(volume)}',
-                                 xy=(timestamp, norm_volume),
-                                 xytext=(0, 5), textcoords='offset points',
-                                 ha='center', va='bottom', color=color,
-                                 fontsize=8, rotation=45)
+            ax2.plot(self.timestamps, normalized_volumes, color=color, label=f'{symbol} Объем')
 
         ax1.set_ylabel('Процентное изменение цены')
         ax1.legend(loc='upper left')

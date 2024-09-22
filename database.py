@@ -48,6 +48,14 @@ class DatabaseManager:
         """
         return self._fetch_data(select_query, (symbol, start_date, end_date))
 
+    def update_price_data(self, symbol: str, timestamp: datetime, price: float, volume: float):
+        update_query = """
+            UPDATE price_history
+            SET price = %s, volume = %s
+            WHERE symbol = %s AND timestamp = %s
+        """
+        self._execute_query(update_query, (price, volume, symbol, timestamp))
+
     def _execute_query(self, query, params=None):
         max_retries = 3
         for attempt in range(max_retries):
