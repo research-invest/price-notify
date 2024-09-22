@@ -1,7 +1,7 @@
 import mysql.connector
 from mysql.connector import Error
 from datetime import datetime
-
+import time
 
 class DatabaseManager:
     def __init__(self, db_config: dict):
@@ -11,6 +11,7 @@ class DatabaseManager:
     def connect(self):
         try:
             self.connection = mysql.connector.connect(**self.db_config)
+            print("Успешное подключение к базе данных MySQL")
         except Error as e:
             print(f"Ошибка при подключении к MySQL: {e}")
 
@@ -48,30 +49,40 @@ class DatabaseManager:
         return self._fetch_data(select_query, (symbol, start_date, end_date))
 
     def _execute_query(self, query, params=None):
-        if not self.connection or not self.connection.is_connected():
-            self.connect()
-
-        try:
-            with self.connection.cursor() as cursor:
-                if params:
-                    cursor.execute(query, params)
-                else:
-                    cursor.execute(query)
-            self.connection.commit()
-        except Error as e:
-            print(f"Ошибка при выполнении запроса: {e}")
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                if not self.connection or not self.connection.is_connected():
+                    self.connect()
+                
+                with self.connection.cursor() as cursor:
+                    if params:
+                        cursor.execute(query, params)
+                    else:
+                        cursor.execute(query)
+                self.connection.commit()
+                return
+            except Error as e:
+                print(f"Ошибка при выполнении запроса (попытка {attempt + 1}): {e}")
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(1)
 
     def _fetch_data(self, query, params=None):
-        if not self.connection or not self.connection.is_connected():
-            self.connect()
-
-        try:
-            with self.connection.cursor() as cursor:
-                if params:
-                    cursor.execute(query, params)
-                else:
-                    cursor.execute(query)
-                return cursor.fetchall()
-        except Error as e:
-            print(f"Ошибка при получении данных: {e}")
-            return []
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                if not self.connection or not self.connection.is_connected():
+                    self.connect()
+                
+                with self.connection.cursor() as cursor:
+                    if params:
+                        cursor.execute(query, params)
+                    else:
+                        cursor.execute(query)
+                    return cursor.fetchall()
+            except Error as e:
+                print(f"Ошибка при получении данных (попытка {attempt + 1}): {e}")
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(1)

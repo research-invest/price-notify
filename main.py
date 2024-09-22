@@ -44,59 +44,64 @@ class CryptoAnalyzer:
         self.db_manager.create_tables()
 
     def analyze_prices(self, symbol: str, current_price: float) -> str:
-        # Получаем исторические данные за последние 30 дней
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=30)
-        historical_data = self.db_manager.get_historical_data(symbol, start_date, end_date)
+        try:
+            # Получаем исторические данные за последние 30 дней
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=30)
+            historical_data = self.db_manager.get_historical_data(symbol, start_date, end_date)
+            
+            if len(historical_data) < 2:
+                return "Недостаточно исторических данных для анализа."
 
-        if len(historical_data) < 2:
-            return "Недостаточно исторических данных для анализа."
+            prices = np.array([row[1] for row in historical_data])
 
-        prices = np.array([row[1] for row in historical_data])
+            # Расчет процентного изменения
+            changes = np.diff(prices) / prices[:-1] * 100
+            
+            # Используем последние 10 изменений или меньше, если данных недостаточно
+            last_changes = changes[-min(10, len(changes)):]
+            
+            avg_change = np.mean(last_changes)
 
-        # Расчет процентного изменения
-        changes = np.diff(prices) / prices[:-1] * 100
-        
-        # Используем последние 10 изменений или меньше, если данных недостаточно
-        last_changes = changes[-min(10, len(changes)):]
-        
-        avg_change = np.mean(last_changes)
+            # Определение тренда
+            trend = "восходящий" if avg_change > 0.5 else "нисходящий" if avg_change < -0.5 else "боковой"
 
-        # Определение тренда
-        trend = "восходящий" if avg_change > 0.5 else "нисходящий" if avg_change < -0.5 else "боковой"
+            # Расчет волатильности (стандартное отклонение изменений)
+            volatility = np.std(last_changes)
 
-        # Расчет волатильности (стандартное отклонение изменений)
-        volatility = np.std(last_changes)
+            # Расчет скользящих средних
+            ma5 = np.mean(prices[-min(5, len(prices)):])
+            ma10 = np.mean(prices[-min(10, len(prices)):])
 
-        # Расчет скользящих средних
-        ma5 = np.mean(prices[-min(5, len(prices)):])
-        ma10 = np.mean(prices[-min(10, len(prices)):])
+            # Формирование анализа и рекомендаций
+            analysis = f"Тренд: {trend}. "
+            analysis += f"Среднее изменение за последние периоды: {avg_change:.2f}%. "
+            analysis += f"Волатильность: {volatility:.2f}%. "
 
-        # Формирование анализа и рекомендаций
-        analysis = f"Тренд: {trend}. "
-        analysis += f"Среднее изменение за последние периоды: {avg_change:.2f}%. "
-        analysis += f"Волатильность: {volatility:.2f}%. "
+            if current_price > ma5 > ma10:
+                analysis += "Цена выше MA5 и MA10. Возможен продолжающийся рост. "
+            elif current_price < ma5 < ma10:
+                analysis += "Цена ниже MA5 и MA10. Возможно продолжение снижения. "
+            elif ma5 > current_price > ma10:
+                analysis += "Цена между MA5 и MA10. Возможна консолидация. "
 
-        if current_price > ma5 > ma10:
-            analysis += "Цена выше MA5 и MA10. Возможен продолжающийся рост. "
-        elif current_price < ma5 < ma10:
-            analysis += "Цена ниже MA5 и MA10. Возможно продолжение снижения. "
-        elif ma5 > current_price > ma10:
-            analysis += "Цена между MA5 и MA10. Возможна консолидация. "
+            if volatility > 2:
+                analysis += "Высокая волатильность. Будьте осторожны. "
+            elif volatility < 0.5:
+                analysis += "Низкая волатильность. Возможен скорый всплеск активности. "
 
-        if volatility > 2:
-            analysis += "Высокая волатильность. Будьте осторожны. "
-        elif volatility < 0.5:
-            analysis += "Низкая волатильность. Возможен скорый всплеск активности. "
+            if trend == "восходящий" and current_price > ma10:
+                analysis += "Рекомендация: Рассмотрите покупку или удержание позиции. "
+            elif trend == "нисходящий" and current_price < ma10:
+                analysis += "Рекомендация: Рассмотрите продажу или сокращение позиции. "
+            else:
+                analysis += "Рекомендация: Наблюдайте за развитием ситуации. "
 
-        if trend == "восходящий" and current_price > ma10:
-            analysis += "Рекомендация: Рассмотрите покупку или удержание позиции. "
-        elif trend == "нисходящий" and current_price < ma10:
-            analysis += "Рекомендация: Рассмотрите продажу или сокращение позиции. "
-        else:
-            analysis += "Рекомендация: Наблюдайте за развитием ситуации. "
+            return analysis
 
-        return analysis
+        except Exception as e:
+            logger.error(f"Ошибка при анализе цен: {e}")
+            return "Произошла ошибка при анализе цен."
 
     def get_price_and_volume(self, symbol: str):
         ticker = self.exchange.fetch_ticker(symbol)
@@ -114,7 +119,10 @@ class CryptoAnalyzer:
                 self.volumes[symbol].append(volume)
 
                 # Сохранение данных в БД
-                self.db_manager.save_price_data(symbol, current_time, price, volume)
+                try:
+                    self.db_manager.save_price_data(symbol, current_time, price, volume)
+                except Exception as db_error:
+                    logger.error(f"Ошибка при сохранении данных в БД: {db_error}")
 
                 formatted_price = format_number(price)
                 formatted_volume = format_number(volume)
