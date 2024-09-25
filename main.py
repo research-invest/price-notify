@@ -34,7 +34,7 @@ class CryptoAnalyzer:
 
     def load_historical_data(self):
         end_date = datetime.now()
-        start_date = end_date - timedelta(days=30)
+        start_date = end_date - timedelta(days=1)
         all_timestamps = set()
 
         # Сначала соберем все уникальные временные метки
