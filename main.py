@@ -9,25 +9,11 @@ from datetime import datetime, timedelta
 import json
 import logging
 import math
+from utils import format_number
 from database import DatabaseManager
-
+import traceback
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-
-def format_number(number):
-    if number >= 1 or number == 0:
-        return f"{number:,.2f}".replace(',', ' ')
-    elif number >= 0.0001:
-        return f"{number:.4f}"
-    else:
-        if number > 0:
-            significant_digits = -math.floor(math.log10(number)) + 2
-            format_string = f"{{:.{significant_digits}f}}"
-            return format_string.format(number)
-        else:
-            return "0.00"  # Для отрицательных чисел или нуля
-
 
 class CryptoAnalyzer:
     def __init__(self, exchange_name: str, symbols: list, telegram_token: str, chat_id: str, db_config: dict):
@@ -129,7 +115,7 @@ class CryptoAnalyzer:
             await self.send_chart(price_volume_chart)
 
         except Exception as e:
-            logger.error(f"An error occurred in update_prices: {e}")
+            logger.error(f"Error in update_prices: {e}\n{traceback.format_exc()}")
 
     def analyze_prices(self, symbol: str, current_price: float) -> str:
         if len(self.prices[symbol]) < 2:
@@ -197,11 +183,23 @@ class CryptoAnalyzer:
             # Нормализация цен
             prices = np.array(self.prices[symbol])
             initial_price = prices[0]
+            if initial_price is None:
+                continue
+
             normalized_prices = (prices - initial_price) / initial_price * 100
 
             # График цены
-            ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена')
+            line, = ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена')
             
+            # Аннотации для цен
+            for j, (timestamp, norm_price, price) in enumerate(zip(self.timestamps, normalized_prices, prices)):
+                if j == len(prices) - 1:  # Аннотируем каждую 3-ю точку и последнюю %j % 3 == 0 or
+                    ax1.annotate(f'{format_number(price)}',
+                                 xy=(timestamp, norm_price),
+                                 xytext=(0, 5), textcoords='offset points',
+                                 ha='center', va='bottom', color=color,
+                                 fontsize=8, rotation=45)
+
             # Нормализация объемов
             volumes = np.array(self.volumes[symbol])
             initial_volume = volumes[0]
@@ -209,6 +207,15 @@ class CryptoAnalyzer:
             
             # График объема
             ax2.plot(self.timestamps, normalized_volumes, color=color, label=f'{symbol} Объем')
+
+            # Аннотации для объемов
+            for j, (timestamp, norm_volume, volume) in enumerate(zip(self.timestamps, normalized_volumes, volumes)):
+                if  j == len(volumes) - 1:  # Аннотируем каждую 3-ю точку и последнюю j % 3 == 0 or
+                    ax2.annotate(f'{format_number(volume)}',
+                                 xy=(timestamp, norm_volume),
+                                 xytext=(0, 5), textcoords='offset points',
+                                 ha='center', va='bottom', color=color,
+                                 fontsize=8, rotation=45)
 
         ax1.set_ylabel('Процентное изменение цены')
         ax1.legend(loc='upper left')
