@@ -12,8 +12,10 @@ import math
 from utils import format_number
 from database import DatabaseManager
 import traceback
+
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
 
 class CryptoAnalyzer:
     def __init__(self, exchange_name: str, symbols: list, telegram_token: str, chat_id: str, db_config: dict):
@@ -34,23 +36,23 @@ class CryptoAnalyzer:
         end_date = datetime.now()
         start_date = end_date - timedelta(days=30)
         all_timestamps = set()
-        
+
         # Сначала соберем все уникальные временные метки
         for symbol in self.symbols:
             historical_data = self.db_manager.get_historical_data(symbol, start_date, end_date)
             all_timestamps.update(row[0] for row in historical_data)
-        
+
         # Отсортируем временные метки
         self.timestamps = sorted(all_timestamps)
-        
+
         # Теперь заполним данные для каждого символа
         for symbol in self.symbols:
             historical_data = self.db_manager.get_historical_data(symbol, start_date, end_date)
             data_dict = {row[0]: (float(row[1]), float(row[2])) for row in historical_data}
-            
+
             self.prices[symbol] = []
             self.volumes[symbol] = []
-            
+
             for timestamp in self.timestamps:
                 if timestamp in data_dict:
                     self.prices[symbol].append(data_dict[timestamp][0])
@@ -59,23 +61,23 @@ class CryptoAnalyzer:
                     # Если данных нет, используем предыдущее значение или None
                     self.prices[symbol].append(self.prices[symbol][-1] if self.prices[symbol] else None)
                     self.volumes[symbol].append(self.volumes[symbol][-1] if self.volumes[symbol] else None)
-            
+
             logger.info(f"Загружено {len(historical_data)} исторических записей для {symbol}")
 
     async def update_prices(self):
         try:
             current_time = datetime.now()
-            
+
             if not self.timestamps or current_time > self.timestamps[-1]:
                 self.timestamps.append(current_time)
                 for symbol in self.symbols:
                     price, volume = self.get_price_and_volume(symbol)
                     price = float(price)
                     volume = float(volume)
-                    
+
                     self.prices[symbol].append(price)
                     self.volumes[symbol].append(volume)
-                    
+
                     # Сохранение данных в БД
                     try:
                         self.db_manager.save_price_data(symbol, current_time, price, volume)
@@ -87,7 +89,7 @@ class CryptoAnalyzer:
                     price, volume = self.get_price_and_volume(symbol)
                     price = float(price)
                     volume = float(volume)
-                    
+
                     self.prices[symbol][-1] = price
                     self.volumes[symbol][-1] = volume
                     # Обновляем запись в БД
@@ -122,7 +124,7 @@ class CryptoAnalyzer:
             return "Недостаточно данных для анализа."
 
         prices = np.array(self.prices[symbol], dtype=float)
-        
+
         # Расчет процентного изменения
         changes = np.diff(prices) / prices[:-1] * 100
         avg_change = np.mean(changes)
@@ -179,7 +181,7 @@ class CryptoAnalyzer:
                 continue
 
             color = self.colors[i]
-            
+
             # Нормализация цен
             prices = np.array(self.prices[symbol])
             initial_price = prices[0]
@@ -189,8 +191,11 @@ class CryptoAnalyzer:
             normalized_prices = (prices - initial_price) / initial_price * 100
 
             # График цены
-            line, = ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена')
-            
+            linewidth = 2.3 if i == 0 else 1  # Делаем линию Bitcoin толще
+            linestyle = '-'  # if i == 0 else '--'
+            line, = ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена',
+                             linewidth=linewidth, linestyle=linestyle)
+
             # Аннотации для цен
             for j, (timestamp, norm_price, price) in enumerate(zip(self.timestamps, normalized_prices, prices)):
                 if j == len(prices) - 1:  # Аннотируем каждую 3-ю точку и последнюю %j % 3 == 0 or
@@ -204,9 +209,10 @@ class CryptoAnalyzer:
             volumes = np.array(self.volumes[symbol])
             initial_volume = volumes[0]
             normalized_volumes = (volumes - initial_volume) / initial_volume * 100
-            
+
             # График объема
-            ax2.plot(self.timestamps, normalized_volumes, color=color, label=f'{symbol} Объем')
+            ax2.plot(self.timestamps, normalized_volumes, color=color, label=f'{symbol} Объем',
+                     linewidth=linewidth, linestyle=linestyle)
 
             # Аннотации для объемов
             for j, (timestamp, norm_volume, volume) in enumerate(zip(self.timestamps, normalized_volumes, volumes)):
@@ -291,7 +297,7 @@ async def main():
         symbols=config['symbols'],
         telegram_token=config['telegram_token'],
         chat_id=config['chat_id'],
-         db_config=config['db']
+        db_config=config['db']
     )
     await analyzer.run(interval=config['update_interval'])
 
