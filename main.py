@@ -1,3 +1,4 @@
+import os
 import ccxt
 import asyncio
 from telegram import Bot
@@ -241,8 +242,12 @@ class CryptoAnalyzer:
 
         plt.tight_layout()
 
+        if not os.path.exists('render'):
+            os.makedirs('render')
+
         buf = BytesIO()
         plt.savefig(buf, format='png', dpi=300)  # Увеличиваем DPI для лучшего качества
+        plt.savefig('render/graph.png', format='png', dpi=300)
         buf.seek(0)
         plt.close()
 
