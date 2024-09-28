@@ -100,6 +100,12 @@ class CryptoAnalyzer:
                     except Exception as db_error:
                         logger.error(f"Ошибка при обновлении данных в БД: {db_error}")
 
+            current_hour = datetime.now().hour + 3
+
+            #Тихий режим
+            if 2 <= current_hour < 6:
+                return
+
             message = ''
             for symbol in self.symbols:
                 formatted_price = format_number(self.prices[symbol][-1])
