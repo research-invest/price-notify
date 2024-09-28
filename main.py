@@ -179,7 +179,7 @@ class CryptoAnalyzer:
 
         formatted_date_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        fig.suptitle(f"Анализ цен и объемов торгов за период {self.interval}s на {formatted_date_time}", fontsize=15)
+        fig.suptitle(f"Анализ цен и объемов торгов за период {self.interval}s на {formatted_date_time}", fontsize=13)
 
         for i, symbol in enumerate(self.symbols):
             if len(self.prices[symbol]) != len(self.timestamps):
@@ -245,7 +245,7 @@ class CryptoAnalyzer:
         plt.gcf().autofmt_xdate()
         ax2.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%H:%M'))
 
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        plt.tight_layout(rect=[0, 0.03, 1, 0.97])
 
         if not os.path.exists('render'):
             os.makedirs('render')
