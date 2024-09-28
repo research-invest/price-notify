@@ -177,7 +177,9 @@ class CryptoAnalyzer:
 
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
 
-        fig.suptitle(f"Анализ цен и объемов торгов за период {self.interval} s", fontsize=17)
+        formatted_date_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        fig.suptitle(f"Анализ цен и объемов торгов за период {self.interval}s на {formatted_date_time}", fontsize=15)
 
         for i, symbol in enumerate(self.symbols):
             if len(self.prices[symbol]) != len(self.timestamps):
