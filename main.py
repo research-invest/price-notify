@@ -19,11 +19,12 @@ logger = logging.getLogger(__name__)
 
 
 class CryptoAnalyzer:
-    def __init__(self, exchange_name: str, symbols: list, telegram_token: str, chat_id: str, db_config: dict):
+    def __init__(self, exchange_name: str, symbols: list, telegram_token: str, chat_id: str, db_config: dict, interval: int):
         self.exchange = getattr(ccxt, exchange_name)()
         self.symbols = symbols
         self.bot = Bot(token=telegram_token)
         self.chat_id = chat_id
+        self.interval = interval
         self.prices = {symbol: [] for symbol in symbols}
         self.volumes = {symbol: [] for symbol in symbols}
         self.timestamps = []
@@ -176,6 +177,8 @@ class CryptoAnalyzer:
 
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
 
+        fig.suptitle(f"Анализ цен и объемов торгов за период {self.interval} s", fontsize=17)
+
         for i, symbol in enumerate(self.symbols):
             if len(self.prices[symbol]) != len(self.timestamps):
                 logger.warning(f"Несоответствие данных для {symbol}. Пропуск построения графика.")
@@ -240,7 +243,7 @@ class CryptoAnalyzer:
         plt.gcf().autofmt_xdate()
         ax2.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%H:%M'))
 
-        plt.tight_layout()
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
         if not os.path.exists('render'):
             os.makedirs('render')
@@ -302,7 +305,8 @@ async def main():
         symbols=config['symbols'],
         telegram_token=config['telegram_token'],
         chat_id=config['chat_id'],
-        db_config=config['db']
+        db_config=config['db'],
+        interval=config['update_interval'],
     )
     await analyzer.run(interval=config['update_interval'])
 
