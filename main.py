@@ -212,7 +212,7 @@ class CryptoAnalyzer:
 
             # Аннотации для цен
             for j, (timestamp, norm_price, price) in enumerate(zip(self.timestamps, normalized_prices, prices)):
-                if j == len(prices) - 1:  # Аннотируем каждую 3-ю точку и последнюю %j % 3 == 0 or
+                if j % (60 / self.interval) == 0 or j == len(prices) - 1:  # Аннотируем каждую 3-ю точку и последнюю %j % 3 == 0 or
                     ax1.annotate(f'{format_number(price)}',
                                  xy=(timestamp, norm_price),
                                  xytext=(0, 5), textcoords='offset points',
@@ -230,7 +230,7 @@ class CryptoAnalyzer:
 
             # Аннотации для объемов
             for j, (timestamp, norm_volume, volume) in enumerate(zip(self.timestamps, normalized_volumes, volumes)):
-                if  j == len(volumes) - 1:  # Аннотируем каждую 3-ю точку и последнюю j % 3 == 0 or
+                if j % (60 / self.interval) == 0 or j == len(volumes) - 1:  # Аннотируем каждую 3-ю точку и последнюю j % 3 == 0 or
                     ax2.annotate(f'{format_number(volume)}',
                                  xy=(timestamp, norm_volume),
                                  xytext=(0, 5), textcoords='offset points',
