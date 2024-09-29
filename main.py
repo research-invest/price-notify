@@ -187,7 +187,11 @@ class CryptoAnalyzer:
 
         formatted_date_time = datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S")
 
-        fig.suptitle(f"Анализ цен и объемов торгов за период {self.interval}s на {formatted_date_time}", fontsize=13)
+        caption = f"Анализ цен и объемов торгов за период {self.interval}s на {formatted_date_time}"
+
+        fig.suptitle(caption, fontsize=13)
+
+        annotation_interval = max(1, int(180 / self.interval))
 
         for i, symbol in enumerate(self.symbols):
             if len(self.prices[symbol]) != len(self.timestamps):
@@ -212,7 +216,7 @@ class CryptoAnalyzer:
 
             # Аннотации для цен
             for j, (timestamp, norm_price, price) in enumerate(zip(self.timestamps, normalized_prices, prices)):
-                if j % (60 / self.interval) == 0 or j == len(prices) - 1:  # Аннотируем каждую 3-ю точку и последнюю %j % 3 == 0 or
+                if j % annotation_interval == 0 or j == len(prices) - 1:  # Аннотируем каждую 3-ю точку и последнюю %j % 3 == 0 or
                     ax1.annotate(f'{format_number(price)}',
                                  xy=(timestamp, norm_price),
                                  xytext=(0, 5), textcoords='offset points',
@@ -230,7 +234,7 @@ class CryptoAnalyzer:
 
             # Аннотации для объемов
             for j, (timestamp, norm_volume, volume) in enumerate(zip(self.timestamps, normalized_volumes, volumes)):
-                if j % (60 / self.interval) == 0 or j == len(volumes) - 1:  # Аннотируем каждую 3-ю точку и последнюю j % 3 == 0 or
+                if j % annotation_interval == 0 or j == len(volumes) - 1:  # Аннотируем каждую 3-ю точку и последнюю j % 3 == 0 or
                     ax2.annotate(f'{format_number(volume)}',
                                  xy=(timestamp, norm_volume),
                                  xytext=(0, 5), textcoords='offset points',
@@ -264,7 +268,7 @@ class CryptoAnalyzer:
         buf.seek(0)
         plt.close()
 
-        return buf
+        return buf, caption
 
     async def send_message(self, message: str, max_retries=3):
         for attempt in range(max_retries):
@@ -280,12 +284,13 @@ class CryptoAnalyzer:
                 logger.error(f"Telegram error occurred: {e}")
                 return
 
-    async def send_chart(self, chart, max_retries=3):
-        if not chart:
+    async def send_chart(self, chart_info, max_retries=3):
+        if not chart_info:
             return
+        chart, caption = chart_info
         for attempt in range(max_retries):
             try:
-                await self.bot.send_photo(chat_id=self.chat_id, photo=chart)
+                await self.bot.send_photo(chat_id=self.chat_id, photo=chart, caption=caption)
                 return
             except TimedOut:
                 if attempt < max_retries - 1:
