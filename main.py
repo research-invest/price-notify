@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 import numpy as np
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import json
 import logging
 import math
@@ -17,6 +18,7 @@ import traceback
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+timezone = ZoneInfo("Europe/Moscow")
 
 class CryptoAnalyzer:
     def __init__(self, exchange_name: str, symbols: list, telegram_token: str, chat_id: str, db_config: dict, interval: int):
@@ -35,7 +37,7 @@ class CryptoAnalyzer:
         self.load_historical_data()
 
     def load_historical_data(self):
-        end_date = datetime.now()
+        end_date = datetime.now(timezone)
         start_date = end_date - timedelta(days=1)
         all_timestamps = set()
 
@@ -100,7 +102,7 @@ class CryptoAnalyzer:
                     except Exception as db_error:
                         logger.error(f"Ошибка при обновлении данных в БД: {db_error}")
 
-            current_hour = datetime.now().hour + 3
+            current_hour = datetime.now(timezone).hour
 
             #Тихий режим
             if 2 <= current_hour < 6:
@@ -183,7 +185,7 @@ class CryptoAnalyzer:
 
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
 
-        formatted_date_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        formatted_date_time = datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S")
 
         fig.suptitle(f"Анализ цен и объемов торгов за период {self.interval}s на {formatted_date_time}", fontsize=13)
 
