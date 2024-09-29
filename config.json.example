@@ -1,6 +1,7 @@
 {
     "exchange_name": "binance",
     "symbols": ["BTC/USDT", "ETH/USDT",],
+    "colors": ["#7706f2", "#3357FF",  "#F1C40F", "#8E44AD", "#3498DB", "#1ABC9C", "#E74C3C", "#2ECC71", "#9B59B6"],
     "telegram_token": "7488441527:AAGTVhhaXIglh94t9dTLWOAlaxHMELsWi9c",
     "chat_id": "192218810",
     "update_interval": 60,

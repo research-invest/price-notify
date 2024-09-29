@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 timezone = ZoneInfo("Europe/Moscow")
 
 class CryptoAnalyzer:
-    def __init__(self, exchange_name: str, symbols: list, telegram_token: str, chat_id: str, db_config: dict, interval: int):
+    def __init__(self, exchange_name: str, symbols: list, colors: list, telegram_token: str, chat_id: str,
+                 db_config: dict, interval: int):
         self.exchange = getattr(ccxt, exchange_name)()
         self.symbols = symbols
         self.bot = Bot(token=telegram_token)
@@ -30,7 +31,8 @@ class CryptoAnalyzer:
         self.prices = {symbol: [] for symbol in symbols}
         self.volumes = {symbol: [] for symbol in symbols}
         self.timestamps = []
-        self.colors = plt.cm.rainbow(np.linspace(0, 1, len(symbols)))
+        self.colors = colors
+        # self.colors = plt.cm.rainbow(np.linspace(0, 1, len(symbols)))
         self.db_manager = DatabaseManager(db_config)
         self.db_manager.connect()
         self.db_manager.create_tables()
@@ -104,7 +106,7 @@ class CryptoAnalyzer:
 
             current_hour = datetime.now(timezone).hour
 
-            #Тихий режим
+            # Тихий режим
             if 2 <= current_hour < 6:
                 return
 
@@ -220,7 +222,8 @@ class CryptoAnalyzer:
 
             # Аннотации для цен
             for j, (timestamp, norm_price, price) in enumerate(zip(self.timestamps, normalized_prices, prices)):
-                if j % annotation_interval == 0 or j == len(prices) - 1:  # Аннотируем каждую 3-ю точку и последнюю %j % 3 == 0 or
+                if j % annotation_interval == 0 or j == len(
+                        prices) - 1:  # Аннотируем каждую 3-ю точку и последнюю %j % 3 == 0 or
                     ax1.annotate(f'{format_number(price)}',
                                  xy=(timestamp, norm_price),
                                  xytext=(0, 5), textcoords='offset points',
@@ -238,7 +241,8 @@ class CryptoAnalyzer:
 
             # Аннотации для объемов
             for j, (timestamp, norm_volume, volume) in enumerate(zip(self.timestamps, normalized_volumes, volumes)):
-                if j % annotation_interval == 0 or j == len(volumes) - 1:  # Аннотируем каждую 3-ю точку и последнюю j % 3 == 0 or
+                if j % annotation_interval == 0 or j == len(
+                        volumes) - 1:  # Аннотируем каждую 3-ю точку и последнюю j % 3 == 0 or
                     ax2.annotate(f'{format_number(volume)}',
                                  xy=(timestamp, norm_volume),
                                  xytext=(0, 5), textcoords='offset points',
@@ -322,6 +326,7 @@ async def main():
     analyzer = CryptoAnalyzer(
         exchange_name=config['exchange_name'],
         symbols=config['symbols'],
+        colors=config['colors'],
         telegram_token=config['telegram_token'],
         chat_id=config['chat_id'],
         db_config=config['db'],
