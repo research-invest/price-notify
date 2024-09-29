@@ -191,7 +191,11 @@ class CryptoAnalyzer:
 
         fig.suptitle(caption, fontsize=13)
 
-        annotation_interval = max(1, int(180 / self.interval))
+        # Интервал аннотаций
+        total_points = len(self.timestamps)
+        points_per_annotation = max(1, int(total_points / 10))  # аннотация на каждой 10-й точке
+        min_interval_seconds = 300  # Минимальный интервал в секундах между аннотациями
+        annotation_interval = max(points_per_annotation, int(min_interval_seconds / self.interval))
 
         for i, symbol in enumerate(self.symbols):
             if len(self.prices[symbol]) != len(self.timestamps):
