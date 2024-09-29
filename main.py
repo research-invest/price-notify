@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 timezone = ZoneInfo("Europe/Moscow")
 
+
 class CryptoAnalyzer:
     def __init__(self, exchange_name: str, symbols: list, colors: list, telegram_token: str, chat_id: str,
                  db_config: dict, interval: int):
@@ -104,11 +105,9 @@ class CryptoAnalyzer:
                     except Exception as db_error:
                         logger.error(f"Ошибка при обновлении данных в БД: {db_error}")
 
-            current_hour = datetime.now(timezone).hour
-
             # Тихий режим
-            if 2 <= current_hour < 6:
-                return
+            # if 2 <= datetime.now(timezone).hour < 6:
+            #     return
 
             message = ''
             for symbol in self.symbols:
