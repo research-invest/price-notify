@@ -271,8 +271,8 @@ class CryptoAnalyzer:
             os.makedirs('render')
 
         buf = BytesIO()
-        plt.savefig(buf, format='png', dpi=300)  # Увеличиваем DPI для лучшего качества
-        plt.savefig('render/graph.png', format='png', dpi=300)
+        plt.savefig(buf, format='png', dpi=100)  # Увеличиваем DPI для лучшего качества
+        plt.savefig('render/graph.png', format='png', dpi=100)
         buf.seek(0)
         plt.close()
 
