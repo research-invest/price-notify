@@ -382,7 +382,7 @@ class CryptoAnalyzer:
         ax3.set_ylabel('Процентное изменение')
         ax3.legend(self.index_lines.values(), self.index_lines.keys(), loc='upper left')
         ax3.grid(True)
-        ax3.title.set_text('Изменение индекса S&P 500')
+        ax3.title.set_text('Изменение индексов')
 
         # Настройка форматирования оси X для всех подграфиков
         for ax in (ax1, ax2, ax3):
@@ -397,7 +397,7 @@ class CryptoAnalyzer:
             os.makedirs('render')
 
         buf = BytesIO()
-        plt.savefig(buf, format='png', dpi=self.dpi)  # Увеличиваем DPI для лучшего качества
+        plt.savefig(buf, format='png', dpi=self.dpi)
         plt.savefig('render/graph.png', format='png', dpi=self.dpi)
         buf.seek(0)
         plt.close()
