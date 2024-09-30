@@ -14,6 +14,8 @@ import math
 from utils import format_number
 from database import DatabaseManager
 import traceback
+import yfinance as yf
+from matplotlib.dates import DateFormatter
 
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -24,6 +26,7 @@ timezone = ZoneInfo("Europe/Moscow")
 class CryptoAnalyzer:
     def __init__(self, exchange_name: str, symbols: list, colors: list, telegram_token: str, chat_id: str,
                  db_config: dict, interval: int):
+        self.dpi = 100
         self.exchange = getattr(ccxt, exchange_name)()
         self.symbols = symbols
         self.bot = Bot(token=telegram_token)
@@ -32,6 +35,8 @@ class CryptoAnalyzer:
         self.prices = {symbol: [] for symbol in symbols}
         self.volumes = {symbol: [] for symbol in symbols}
         self.timestamps = []
+        self.sp500_prices = []
+        self.sp500_timestamps = []
         self.colors = colors
         # self.colors = plt.cm.rainbow(np.linspace(0, 1, len(symbols)))
         self.db_manager = DatabaseManager(db_config)
@@ -71,9 +76,21 @@ class CryptoAnalyzer:
 
             logger.info(f"Загружено {len(historical_data)} исторических записей для {symbol}")
 
+        # Загружаем исторические данные S&P 500
+        sp500_data = self.db_manager.get_historical_data('SP500', start_date, end_date)
+        self.sp500_prices = [float(price) for _, price, _ in sp500_data]
+        self.sp500_timestamps = [timestamp for timestamp, _, _ in sp500_data]
+
     async def update_prices(self):
         try:
             current_time = datetime.now()
+
+            # Обновляем данные S&P 500
+            sp500 = yf.Ticker("^GSPC")
+            latest_sp500 = float(sp500.history(period="1d")['Close'].iloc[-1])
+            self.db_manager.save_price_data('SP500', current_time, latest_sp500, 0)  # объем 0 для S&P 500
+            self.sp500_prices.append(latest_sp500)
+            self.sp500_timestamps.append(current_time)
 
             if not self.timestamps or current_time > self.timestamps[-1]:
                 self.timestamps.append(current_time)
@@ -115,6 +132,8 @@ class CryptoAnalyzer:
                 formatted_volume = format_number(self.volumes[symbol][-1])
                 analysis = self.analyze_prices(symbol, self.prices[symbol][-1])
                 message += f"{symbol}:\nЦена: {formatted_price}\nОбъем: {formatted_volume}\nАнализ: {analysis}\n\n"
+
+            message += f"S&P 500: {latest_sp500:.2f}\n\n"
 
             if len(self.timestamps) > 100:
                 self.timestamps = self.timestamps[-100:]
@@ -181,10 +200,11 @@ class CryptoAnalyzer:
         return ticker['last'], ticker['quoteVolume']
 
     def create_price_volume_chart(self):
-        if len(self.timestamps) < 2:
+        if len(self.timestamps) < 2 or len(self.sp500_prices) < 1:
+            print("Not enough data to create chart")
             return None
 
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 18), sharex=True)
 
         formatted_date_time = datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -248,6 +268,12 @@ class CryptoAnalyzer:
                                  ha='center', va='bottom', color=color,
                                  fontsize=8, rotation=45)
 
+        # Добавляем S&P 500
+        if len(self.sp500_prices) > 0:
+            initial_sp500 = self.sp500_prices[0]
+            normalized_sp500 = (np.array(self.sp500_prices) - initial_sp500) / initial_sp500 * 100
+            ax3.plot(self.sp500_timestamps, normalized_sp500, color='#2C3E50', label='S&P 500')
+
         ax1.set_ylabel('Процентное изменение цены')
         ax1.legend(loc='upper left')
         ax1.grid(True)
@@ -261,17 +287,23 @@ class CryptoAnalyzer:
         ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.1f}%"))
         ax2.axhline(y=0, color='gray', linestyle='--')
 
-        plt.gcf().autofmt_xdate()
-        ax2.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%H:%M'))
+        ax3.set_xlabel('Время')
+        ax3.set_ylabel('Процентное изменение')
+        ax3.legend(loc='upper left')
+        ax3.grid(True)
+        ax3.title.set_text('Изменение индекса S&P 500')
 
-        plt.tight_layout(rect=[0, 0.03, 1, 0.97])
+        plt.gcf().autofmt_xdate()
+        ax3.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%H:%M'))
+
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
         if not os.path.exists('render'):
             os.makedirs('render')
 
         buf = BytesIO()
-        plt.savefig(buf, format='png', dpi=100)  # Увеличиваем DPI для лучшего качества
-        plt.savefig('render/graph.png', format='png', dpi=100)
+        plt.savefig(buf, format='png', dpi=self.dpi)  # Увеличиваем DPI для лучшего качества
+        plt.savefig('render/graph.png', format='png', dpi=self.dpi)
         buf.seek(0)
         plt.close()
 

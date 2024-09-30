@@ -2,4 +2,5 @@ ccxt
 python-telegram-bot
 matplotlib
 numpy
+yfinance
 mysql-connector-python
