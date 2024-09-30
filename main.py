@@ -53,7 +53,7 @@ class CryptoAnalyzer:
         self.db_manager.connect()
         self.db_manager.create_tables()
         self.load_historical_data()
-        self.last_indices_update = datetime.min
+        self.last_indices_update = datetime.now(timezone)
 
     def load_historical_data(self):
         end_date = datetime.now(timezone)
