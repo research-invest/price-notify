@@ -274,6 +274,21 @@ class CryptoAnalyzer:
             normalized_sp500 = (np.array(self.sp500_prices) - initial_sp500) / initial_sp500 * 100
             ax3.plot(self.sp500_timestamps, normalized_sp500, color='#2C3E50', label='S&P 500')
 
+            # Добавляем аннотации для начального и конечного значений S&P 500
+            ax3.annotate(f'{initial_sp500:.2f}',
+                         (self.sp500_timestamps[0], normalized_sp500[0]),
+                         textcoords="offset points",
+                         xytext=(0, 5),
+                         ha='center', va='bottom',
+                         fontsize=8, rotation=45)
+
+            ax3.annotate(f'{self.sp500_prices[-1]:.2f}',
+                         (self.sp500_timestamps[-1], normalized_sp500[-1]),
+                         textcoords="offset points",
+                         xytext=(0, 5),
+                         ha='center', va='bottom',
+                         fontsize=8, rotation=45)
+
         ax1.set_ylabel('Процентное изменение цены')
         ax1.legend(loc='upper left')
         ax1.grid(True)
