@@ -20,13 +20,14 @@ class DatabaseManager:
             self.connection.close()
             print("Соединение с базой данных MySQL закрыто")
 
+
     def create_tables(self):
         create_table_query = """
         CREATE TABLE IF NOT EXISTS price_history (
             id INT AUTO_INCREMENT PRIMARY KEY,
             symbol VARCHAR(20) NOT NULL,
             timestamp DATETIME NOT NULL,
-            price DECIMAL(20, 8) NOT NULL,
+            price DECIMAL(65, 10) NOT NULL,
             volume DECIMAL(20, 8) NOT NULL
         );
         """

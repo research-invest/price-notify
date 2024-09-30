@@ -16,6 +16,9 @@ from database import DatabaseManager
 import traceback
 import yfinance as yf
 from matplotlib.dates import DateFormatter
+from pycoingecko import CoinGeckoAPI
+import requests
+import matplotlib.dates as mdates
 
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -27,6 +30,15 @@ class CryptoAnalyzer:
     def __init__(self, exchange_name: str, symbols: list, colors: list, telegram_token: str, chat_id: str,
                  db_config: dict, interval: int):
         self.dpi = 100
+        self.cg = CoinGeckoAPI()
+        self.indices = {
+            'SP500': {'values': [], 'timestamps': []},
+            'Fear&Greed': {'values': [], 'timestamps': []},
+            'BTC_Dominance': {'values': [], 'timestamps': []},
+            'NASDAQ': {'values': [], 'timestamps': []},
+            'Total_Market_Cap': {'values': [], 'timestamps': []},
+            'Market_Cap_Change_24h': {'values': [], 'timestamps': []}
+        }
         self.exchange = getattr(ccxt, exchange_name)()
         self.symbols = symbols
         self.bot = Bot(token=telegram_token)
@@ -35,14 +47,13 @@ class CryptoAnalyzer:
         self.prices = {symbol: [] for symbol in symbols}
         self.volumes = {symbol: [] for symbol in symbols}
         self.timestamps = []
-        self.sp500_prices = []
-        self.sp500_timestamps = []
         self.colors = colors
         # self.colors = plt.cm.rainbow(np.linspace(0, 1, len(symbols)))
         self.db_manager = DatabaseManager(db_config)
         self.db_manager.connect()
         self.db_manager.create_tables()
         self.load_historical_data()
+        self.index_lines = {}
 
     def load_historical_data(self):
         end_date = datetime.now(timezone)
@@ -56,6 +67,19 @@ class CryptoAnalyzer:
 
         # Отсортируем временные метки
         self.timestamps = sorted(all_timestamps)
+
+        for index in self.indices:
+            try:
+                historical_data = self.db_manager.get_historical_data(index, start_date, end_date)
+                data_dict = {row[0]: (float(row[1]), float(row[2])) for row in historical_data}
+
+                self.indices[index]['timestamps'] = list(data_dict.keys())
+                self.indices[index]['values'] = [value[0] for value in data_dict.values()]
+
+            except Exception as e:
+                print(f"Error loading data for {index}: {e}")
+                self.indices[index]['timestamps'] = []
+                self.indices[index]['values'] = []
 
         # Теперь заполним данные для каждого символа
         for symbol in self.symbols:
@@ -77,9 +101,9 @@ class CryptoAnalyzer:
             logger.info(f"Загружено {len(historical_data)} исторических записей для {symbol}")
 
         # Загружаем исторические данные S&P 500
-        sp500_data = self.db_manager.get_historical_data('SP500', start_date, end_date)
-        self.sp500_prices = [float(price) for _, price, _ in sp500_data]
-        self.sp500_timestamps = [timestamp for timestamp, _, _ in sp500_data]
+        # sp500_data = self.db_manager.get_historical_data('SP500', start_date, end_date)
+        # self.sp500_prices = [float(price) for _, price, _ in sp500_data]
+        # self.sp500_timestamps = [timestamp for timestamp, _, _ in sp500_data]
 
     async def update_prices(self):
         try:
@@ -89,8 +113,45 @@ class CryptoAnalyzer:
             sp500 = yf.Ticker("^GSPC")
             latest_sp500 = float(sp500.history(period="1d")['Close'].iloc[-1])
             self.db_manager.save_price_data('SP500', current_time, latest_sp500, 0)  # объем 0 для S&P 500
-            self.sp500_prices.append(latest_sp500)
-            self.sp500_timestamps.append(current_time)
+            self.indices['SP500']['values'].append(latest_sp500)
+            self.indices['SP500']['timestamps'].append(current_time)
+
+            # Обновляем индекс страха и жадности
+            fear_greed_data = requests.get('https://api.alternative.me/fng/').json()
+            fear_greed_value = int(fear_greed_data['data'][0]['value'])
+            self.db_manager.save_price_data('Fear&Greed', current_time, fear_greed_value, 0)  # объем 0 для Fear&Greed
+            self.indices['Fear&Greed']['values'].append(fear_greed_value)
+            self.indices['Fear&Greed']['timestamps'].append(current_time)
+
+            # Обновляем индекс доминирования биткоина
+            bitcoin_data = self.cg.get_global()
+            btc_dominance = float(bitcoin_data['market_cap_percentage']['btc'])
+            self.db_manager.save_price_data('BTC_Dominance', current_time, btc_dominance,
+                                            0)  # объем 0 для BTC_Dominance
+            self.indices['BTC_Dominance']['values'].append(btc_dominance)
+            self.indices['BTC_Dominance']['timestamps'].append(current_time)
+
+            # Добавим также общую капитализацию рынка
+            total_market_cap = float(bitcoin_data['total_market_cap']['usd'])
+
+            self.db_manager.save_price_data('Total_Market_Cap', current_time, total_market_cap,
+                                            0)  # объем 0 для Total_Market_Cap
+            self.indices['Total_Market_Cap']['values'].append(total_market_cap)
+            self.indices['Total_Market_Cap']['timestamps'].append(current_time)
+
+            # И изменение капитализации за 24 часа
+            market_cap_change_24h = float(bitcoin_data['market_cap_change_percentage_24h_usd'])
+            self.db_manager.save_price_data('Total_Market_Cap', current_time, market_cap_change_24h,
+                                            0)  # объем 0 для Market_Cap_Change_24h
+            self.indices['Market_Cap_Change_24h']['values'].append(market_cap_change_24h)
+            self.indices['Market_Cap_Change_24h']['timestamps'].append(current_time)
+
+            # Обновляем NASDAQ-100
+            nasdaq = yf.Ticker("^NDX")
+            latest_nasdaq = float(nasdaq.history(period="1d")['Close'].iloc[-1])
+            self.db_manager.save_price_data('NASDAQ', current_time, latest_nasdaq, 0)  # объем 0 для NASDAQ
+            self.indices['NASDAQ']['values'].append(latest_nasdaq)
+            self.indices['NASDAQ']['timestamps'].append(current_time)
 
             if not self.timestamps or current_time > self.timestamps[-1]:
                 self.timestamps.append(current_time)
@@ -108,7 +169,7 @@ class CryptoAnalyzer:
                     except Exception as db_error:
                         logger.error(f"Ошибка при сохранении данных в БД: {db_error}")
             else:
-                # Обновляем последнюю запись, если время совпадает
+                # Обновля��м последнюю запись, если время совпадает
                 for symbol in self.symbols:
                     price, volume = self.get_price_and_volume(symbol)
                     price = float(price)
@@ -200,12 +261,11 @@ class CryptoAnalyzer:
         return ticker['last'], ticker['quoteVolume']
 
     def create_price_volume_chart(self):
-        if len(self.timestamps) < 2 or len(self.sp500_prices) < 1:
+        if len(self.timestamps) < 2:
             print("Not enough data to create chart")
             return None
 
-        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 18), sharex=True)
-
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 18), sharex=True, constrained_layout=True)
         formatted_date_time = datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S")
 
         caption = f"Анализ цен и объемов торгов за период {self.interval}s на {formatted_date_time}"
@@ -268,26 +328,42 @@ class CryptoAnalyzer:
                                  ha='center', va='bottom', color=color,
                                  fontsize=8, rotation=45)
 
-        # Добавляем S&P 500
-        if len(self.sp500_prices) > 0:
-            initial_sp500 = self.sp500_prices[0]
-            normalized_sp500 = (np.array(self.sp500_prices) - initial_sp500) / initial_sp500 * 100
-            ax3.plot(self.sp500_timestamps, normalized_sp500, color='#2C3E50', label='S&P 500')
+        colors = ['#2C3E50', '#8E44AD', '#F39C12', '#16A085', '#27AE60', '#C0392B']
+        for i, (index, color) in enumerate(zip(self.indices, colors)):
+            values = np.array(self.indices[index]['values'])
+            timestamps = self.indices[index]['timestamps']
 
-            # Добавляем аннотации для начального и конечного значений S&P 500
-            ax3.annotate(f'{initial_sp500:.2f}',
-                         (self.sp500_timestamps[0], normalized_sp500[0]),
-                         textcoords="offset points",
-                         xytext=(0, 5),
-                         ha='center', va='bottom',
-                         fontsize=8, rotation=45)
+            if len(values) > 0 and len(timestamps) > 0:
+                if index in ['Total_Market_Cap', 'Market_Cap_Change_24h']:
+                    # Для этих индексов мы не нормализуем значения
+                    line, = ax3.plot(timestamps, values, color=color, label=index)
+                else:
+                    # Для остальных индексов нормализуем значения
+                    initial_value = values[0]
+                    normalized_values = (values - initial_value) / initial_value * 100
+                    line, = ax3.plot(timestamps, normalized_values, color=color, label=index)
+                
+                self.index_lines[index] = line
 
-            ax3.annotate(f'{self.sp500_prices[-1]:.2f}',
-                         (self.sp500_timestamps[-1], normalized_sp500[-1]),
-                         textcoords="offset points",
-                         xytext=(0, 5),
-                         ha='center', va='bottom',
-                         fontsize=8, rotation=45)
+                # Добавляем аннотации
+                if len(values) > 1:
+                    ax3.annotate(f'{values[0]:.2f}', 
+                                 (timestamps[0], values[0] if index in ['Total_Market_Cap', 'Market_Cap_Change_24h'] else normalized_values[0]),
+                                 textcoords="offset points", 
+                                 xytext=(0,10 + i*20), 
+                                 ha='center',
+                                 fontsize=8,
+                                 color=color)
+                    
+                    ax3.annotate(f'{values[-1]:.2f}', 
+                                 (timestamps[-1], values[-1] if index in ['Total_Market_Cap', 'Market_Cap_Change_24h'] else normalized_values[-1]),
+                                 textcoords="offset points", 
+                                 xytext=(0,10 + i*20), 
+                                 ha='center',
+                                 fontsize=8,
+                                 color=color)
+            else:
+                print(f"No data available for {index}")
 
         ax1.set_ylabel('Процентное изменение цены')
         ax1.legend(loc='upper left')
@@ -304,14 +380,18 @@ class CryptoAnalyzer:
 
         ax3.set_xlabel('Время')
         ax3.set_ylabel('Процентное изменение')
-        ax3.legend(loc='upper left')
+        ax3.legend(self.index_lines.values(), self.index_lines.keys(), loc='upper left')
         ax3.grid(True)
         ax3.title.set_text('Изменение индекса S&P 500')
 
-        plt.gcf().autofmt_xdate()
-        ax3.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%H:%M'))
+        # Настройка форматирования оси X для всех подграфиков
+        for ax in (ax1, ax2, ax3):
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+            ax.xaxis.set_major_locator(mdates.HourLocator(interval=1))
+            plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
 
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        # Настройка общей оси X
+        fig.align_xlabels()
 
         if not os.path.exists('render'):
             os.makedirs('render')

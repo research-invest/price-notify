@@ -3,4 +3,6 @@ python-telegram-bot
 matplotlib
 numpy
 yfinance
+requests
+pycoingecko
 mysql-connector-python
