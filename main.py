@@ -29,7 +29,7 @@ timezone = ZoneInfo("Europe/Moscow")
 class CryptoAnalyzer:
     def __init__(self, exchange_name: str, symbols: list, colors: list, telegram_token: str, chat_id: str,
                  db_config: dict, interval: int):
-        self.dpi = 100
+        self.dpi = 140
         self.cg = CoinGeckoAPI()
         self.indices = {
             'SP500': {'values': [], 'timestamps': []},
@@ -53,7 +53,7 @@ class CryptoAnalyzer:
         self.db_manager.connect()
         self.db_manager.create_tables()
         self.load_historical_data()
-        self.index_lines = {}
+        self.last_indices_update = datetime.min
 
     def load_historical_data(self):
         end_date = datetime.now(timezone)
@@ -99,11 +99,6 @@ class CryptoAnalyzer:
                     self.volumes[symbol].append(self.volumes[symbol][-1] if self.volumes[symbol] else None)
 
             logger.info(f"Загружено {len(historical_data)} исторических записей для {symbol}")
-
-        # Загружаем исторические данные S&P 500
-        # sp500_data = self.db_manager.get_historical_data('SP500', start_date, end_date)
-        # self.sp500_prices = [float(price) for _, price, _ in sp500_data]
-        # self.sp500_timestamps = [timestamp for timestamp, _, _ in sp500_data]
 
     async def update_prices(self):
         try:
@@ -169,7 +164,7 @@ class CryptoAnalyzer:
                     except Exception as db_error:
                         logger.error(f"Ошибка при сохранении данных в БД: {db_error}")
             else:
-                # Обновля��м последнюю запись, если время совпадает
+                # Обновляем последнюю запись, если время совпадает
                 for symbol in self.symbols:
                     price, volume = self.get_price_and_volume(symbol)
                     price = float(price)
@@ -206,6 +201,14 @@ class CryptoAnalyzer:
 
             price_volume_chart = self.create_price_volume_chart()
             await self.send_chart(price_volume_chart)
+
+            # Отправляем график индексов раз в час
+            current_time = datetime.now(timezone)
+            if current_time - self.last_indices_update >= timedelta(hours=1):
+                indices_chart = self.create_indices_chart()
+                await self.send_chart(indices_chart)
+                self.last_indices_update = current_time
+
 
         except Exception as e:
             logger.error(f"Error in update_prices: {e}\n{traceback.format_exc()}")
@@ -262,10 +265,10 @@ class CryptoAnalyzer:
 
     def create_price_volume_chart(self):
         if len(self.timestamps) < 2:
-            print("Not enough data to create chart")
             return None
 
-        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 18), sharex=True, constrained_layout=True)
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
+
         formatted_date_time = datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S")
 
         caption = f"Анализ цен и объемов торгов за период {self.interval}s на {formatted_date_time}"
@@ -328,43 +331,6 @@ class CryptoAnalyzer:
                                  ha='center', va='bottom', color=color,
                                  fontsize=8, rotation=45)
 
-        colors = ['#2C3E50', '#8E44AD', '#F39C12', '#16A085', '#27AE60', '#C0392B']
-        for i, (index, color) in enumerate(zip(self.indices, colors)):
-            values = np.array(self.indices[index]['values'])
-            timestamps = self.indices[index]['timestamps']
-
-            if len(values) > 0 and len(timestamps) > 0:
-                if index in ['Total_Market_Cap', 'Market_Cap_Change_24h']:
-                    # Для этих индексов мы не нормализуем значения
-                    line, = ax3.plot(timestamps, values, color=color, label=index)
-                else:
-                    # Для остальных индексов нормализуем значения
-                    initial_value = values[0]
-                    normalized_values = (values - initial_value) / initial_value * 100
-                    line, = ax3.plot(timestamps, normalized_values, color=color, label=index)
-                
-                self.index_lines[index] = line
-
-                # Добавляем аннотации
-                if len(values) > 1:
-                    ax3.annotate(f'{values[0]:.2f}', 
-                                 (timestamps[0], values[0] if index in ['Total_Market_Cap', 'Market_Cap_Change_24h'] else normalized_values[0]),
-                                 textcoords="offset points", 
-                                 xytext=(0,10 + i*20), 
-                                 ha='center',
-                                 fontsize=8,
-                                 color=color)
-                    
-                    ax3.annotate(f'{values[-1]:.2f}', 
-                                 (timestamps[-1], values[-1] if index in ['Total_Market_Cap', 'Market_Cap_Change_24h'] else normalized_values[-1]),
-                                 textcoords="offset points", 
-                                 xytext=(0,10 + i*20), 
-                                 ha='center',
-                                 fontsize=8,
-                                 color=color)
-            else:
-                print(f"No data available for {index}")
-
         ax1.set_ylabel('Процентное изменение цены')
         ax1.legend(loc='upper left')
         ax1.grid(True)
@@ -378,20 +344,10 @@ class CryptoAnalyzer:
         ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.1f}%"))
         ax2.axhline(y=0, color='gray', linestyle='--')
 
-        ax3.set_xlabel('Время')
-        ax3.set_ylabel('Процентное изменение')
-        ax3.legend(self.index_lines.values(), self.index_lines.keys(), loc='upper left')
-        ax3.grid(True)
-        ax3.title.set_text('Изменение индексов')
+        plt.gcf().autofmt_xdate()
+        ax2.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%H:%M'))
 
-        # Настройка форматирования оси X для всех подграфиков
-        for ax in (ax1, ax2, ax3):
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-            ax.xaxis.set_major_locator(mdates.HourLocator(interval=1))
-            plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
-
-        # Настройка общей оси X
-        fig.align_xlabels()
+        plt.tight_layout(rect=[0, 0.03, 1, 0.97])
 
         if not os.path.exists('render'):
             os.makedirs('render')
@@ -403,6 +359,57 @@ class CryptoAnalyzer:
         plt.close()
 
         return buf, caption
+
+    def create_indices_chart(self):
+        fig, ax = plt.subplots(figsize=(12, 8), constrained_layout=True)
+
+        colors = ['#2C3E50', '#8E44AD', '#F39C12', '#16A085', '#27AE60', '#C0392B']
+        index_lines = {}
+
+        for i, (index, color) in enumerate(zip(self.indices, colors)):
+            values = np.array(self.indices[index]['values'])
+            timestamps = self.indices[index]['timestamps']
+
+            if len(values) > 0 and len(timestamps) > 0:
+                if index in ['Total_Market_Cap', 'Market_Cap_Change_24h']:
+                    line, = ax.plot(timestamps, values, color=color, label=index)
+                else:
+                    initial_value = values[0]
+                    normalized_values = (values - initial_value) / initial_value * 100
+                    line, = ax.plot(timestamps, normalized_values, color=color, label=index)
+
+                index_lines[index] = line
+
+                # Добавляем аннотации
+                if len(values) > 1:
+                    ax.annotate(f'{values[-1]:.2f}',
+                                (timestamps[-1],
+                                 values[-1] if index in ['Total_Market_Cap', 'Market_Cap_Change_24h'] else
+                                 normalized_values[-1]),
+                                textcoords="offset points",
+                                xytext=(0, 10 + i * 20),
+                                ha='center',
+                                fontsize=8,
+                                color=color)
+            else:
+                print(f"No data available for {index}")
+
+        ax.legend(index_lines.values(), index_lines.keys(), loc='upper left')
+        ax.set_xlabel('Время')
+        ax.set_ylabel('Значение / Процентное изменение')
+        ax.set_title('Изменение индексов')
+        ax.grid(True)
+
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+        ax.xaxis.set_major_locator(mdates.HourLocator(interval=1))
+        plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
+
+        buf = BytesIO()
+        plt.savefig(buf, format='png', dpi=self.dpi)
+        buf.seek(0)
+        plt.close(fig)
+
+        return buf, 'Изменение индексов'
 
     async def send_message(self, message: str, max_retries=3):
         for attempt in range(max_retries):
