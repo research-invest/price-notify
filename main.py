@@ -204,10 +204,11 @@ class CryptoAnalyzer:
 
             # Отправляем график индексов раз в час
             current_time = datetime.now(timezone)
-            if current_time - self.last_indices_update >= timedelta(hours=1):
+            if current_time.minute == 0 and (current_time - self.last_indices_update).total_seconds() >= 3600:
                 indices_chart = self.create_indices_chart()
                 await self.send_chart(indices_chart)
-                self.last_indices_update = current_time
+                self.last_indices_update = current_time.replace(minute=0, second=0, microsecond=0)
+
 
 
         except Exception as e:
@@ -372,7 +373,8 @@ class CryptoAnalyzer:
 
             if len(values) > 0 and len(timestamps) > 0:
                 if index in ['Total_Market_Cap', 'Market_Cap_Change_24h']:
-                    line, = ax.plot(timestamps, values, color=color, label=index)
+                    continue
+                    # line, = ax.plot(timestamps, values, color=color, label=index)
                 else:
                     initial_value = values[0]
                     normalized_values = (values - initial_value) / initial_value * 100
@@ -387,7 +389,7 @@ class CryptoAnalyzer:
                                  values[-1] if index in ['Total_Market_Cap', 'Market_Cap_Change_24h'] else
                                  normalized_values[-1]),
                                 textcoords="offset points",
-                                xytext=(0, 10 + i * 20),
+                                xytext=(0, 5),
                                 ha='center',
                                 fontsize=8,
                                 color=color)
