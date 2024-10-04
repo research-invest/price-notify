@@ -1,14 +1,38 @@
 {
+    "environment": "local",
     "exchange_name": "binance",
-    "symbols": ["BTC/USDT", "ETH/USDT",],
-    "colors": ["#7706f2", "#3357FF",  "#F1C40F", "#8E44AD", "#3498DB", "#1ABC9C", "#E74C3C", "#2ECC71", "#9B59B6"],
-    "telegram_token": "7488441527:AAGTVhhaXIglh94t9dTLWOAlaxHMELsWi9c",
-    "chat_id": "192218810",
+    "symbols": [
+        {
+            "name": "BTC/USDT",
+            "color": "#8E44AD",
+            "line_width": 2.3
+        },
+        {
+            "name": "TAO/USDT",
+            "color": "#2ECC71",
+            "line_width": 1
+        }
+    ],
     "update_interval": 60,
     "db": {
         "host": "localhost",
         "database": "price_notifier",
         "user": "price_notifier_user",
         "password": "e4HG3KF2S3f3_fd"
+    },
+    "telegram": {
+        "webhook_url": "",
+        "token": "7488441527:AAGTVhhaXIglh94t9dTLWOAlaxHMELsWi9c",
+        "chat_id": "192218810",
+    },
+    "stickers": {
+        "positive": [
+            "CAACAgEAAxkBAAEM6jNm_s0qj8ACvTJunuK_JTvmavp5xAAC8gQAAnTlKQw15opDeMDIfTYE",
+            "CAACAgIAAxkBAAEM6jhm_s1jnzb4n0E9X0Bnx6K21OCxZwACThQAAjTTYEjImOUXwyoZhTYE"
+        ],
+        "negative": [
+            "CAACAgIAAxkBAAENCKdkKqW0AAHr8AABbAABdAABJAABbQABHnEAArAXAAIpAAFgS1aQ-tR4gh4bLwQ",
+            "CAACAgIAAxkBAAENCKlkKqW2AAEsAAFUAAFsAAEdAAEeeQACshcAAikAAWBLVpD61HiCHhsvBA"
+        ]
     }
 }

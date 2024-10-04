@@ -19,6 +19,7 @@ from matplotlib.dates import DateFormatter
 from pycoingecko import CoinGeckoAPI
 import requests
 import matplotlib.dates as mdates
+import random
 
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -27,8 +28,8 @@ timezone = ZoneInfo("Europe/Moscow")
 
 
 class CryptoAnalyzer:
-    def __init__(self, exchange_name: str, symbols: list, colors: list, telegram_token: str, chat_id: str,
-                 db_config: dict, interval: int):
+    def __init__(self, exchange_name: str, symbols: list, telegram_token: str, chat_id: str,
+                 db_config: dict, interval: int, stickers: dict):
         self.dpi = 140
         self.cg = CoinGeckoAPI()
         self.indices = {
@@ -40,20 +41,21 @@ class CryptoAnalyzer:
             'Market_Cap_Change_24h': {'values': [], 'timestamps': []}
         }
         self.exchange = getattr(ccxt, exchange_name)()
-        self.symbols = symbols
+        self.symbols = [symbol['name'] for symbol in symbols]
+        self.symbol_colors = {symbol['name']: symbol['color'] for symbol in symbols}
+        self.symbol_line_widths = {symbol['name']: symbol.get('line_width', 1) for symbol in symbols}
         self.bot = Bot(token=telegram_token)
         self.chat_id = chat_id
         self.interval = interval
-        self.prices = {symbol: [] for symbol in symbols}
-        self.volumes = {symbol: [] for symbol in symbols}
+        self.prices = {symbol: [] for symbol in self.symbols}
+        self.volumes = {symbol: [] for symbol in self.symbols}
         self.timestamps = []
-        self.colors = colors
-        # self.colors = plt.cm.rainbow(np.linspace(0, 1, len(symbols)))
         self.db_manager = DatabaseManager(db_config)
         self.db_manager.connect()
         self.db_manager.create_tables()
         self.load_historical_data()
         self.last_indices_update = datetime.now(timezone)
+        self.stickers = stickers
 
     def load_historical_data(self):
         end_date = datetime.now(timezone)
@@ -183,11 +185,18 @@ class CryptoAnalyzer:
             #     return
 
             message = ''
+            overall_sentiment = 0
             for symbol in self.symbols:
                 formatted_price = format_number(self.prices[symbol][-1])
                 formatted_volume = format_number(self.volumes[symbol][-1])
                 analysis = self.analyze_prices(symbol, self.prices[symbol][-1])
                 message += f"{symbol}:\nЦена: {formatted_price}\nОбъем: {formatted_volume}\nАнализ: {analysis}\n\n"
+                
+                # Простой подсчет настроения
+                if "восходящий" in analysis:
+                    overall_sentiment += 1
+                elif "нисходящий" in analysis:
+                    overall_sentiment -= 1
 
             message += f"S&P 500: {latest_sp500:.2f}\n\n"
 
@@ -209,6 +218,11 @@ class CryptoAnalyzer:
                 await self.send_chart(indices_chart)
                 self.last_indices_update = current_time.replace(minute=0, second=0, microsecond=0)
 
+            # Отправка стикера на основе общего настроения
+            if overall_sentiment > 0:
+                await self.send_sticker(random.choice(self.stickers['positive']))
+            elif overall_sentiment < 0:
+                await self.send_sticker(random.choice(self.stickers['negative']))
 
 
         except Exception as e:
@@ -282,12 +296,13 @@ class CryptoAnalyzer:
         min_interval_seconds = 300  # Минимальный интервал в секундах между аннотациями
         annotation_interval = max(points_per_annotation, int(min_interval_seconds / self.interval))
 
-        for i, symbol in enumerate(self.symbols):
+        for symbol in self.symbols:
             if len(self.prices[symbol]) != len(self.timestamps):
                 logger.warning(f"Несоответствие данных для {symbol}. Пропуск построения графика.")
                 continue
 
-            color = self.colors[i]
+            color = self.symbol_colors[symbol]
+            line_width = self.symbol_line_widths[symbol]
 
             # Нормализация цен
             prices = np.array(self.prices[symbol])
@@ -298,10 +313,8 @@ class CryptoAnalyzer:
             normalized_prices = (prices - initial_price) / initial_price * 100
 
             # График цены
-            linewidth = 2.3 if i == 0 else 1  # Делаем линию Bitcoin толще
-            linestyle = '-'  # if i == 0 else '--'
             line, = ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена',
-                             linewidth=linewidth, linestyle=linestyle)
+                             linewidth=line_width, linestyle='-')
 
             # Аннотации для цен
             for j, (timestamp, norm_price, price) in enumerate(zip(self.timestamps, normalized_prices, prices)):
@@ -320,7 +333,7 @@ class CryptoAnalyzer:
 
             # График объема
             ax2.plot(self.timestamps, normalized_volumes, color=color, label=f'{symbol} Объем',
-                     linewidth=linewidth, linestyle=linestyle)
+                     linewidth=line_width, linestyle='-')
 
             # Аннотации для объемов
             for j, (timestamp, norm_volume, volume) in enumerate(zip(self.timestamps, normalized_volumes, volumes)):
@@ -453,6 +466,20 @@ class CryptoAnalyzer:
                 logger.error(f"An error occurred in run: {e}")
                 await asyncio.sleep(10)  # Ждем 10 секунд перед повторной попыткой в случае ошибки
 
+    async def send_sticker(self, sticker_id: str, max_retries=3):
+        for attempt in range(max_retries):
+            try:
+                await self.bot.send_sticker(chat_id=self.chat_id, sticker=sticker_id)
+                return
+            except TimedOut:
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    logger.error(f"Не удалось отправить стикер после {max_retries} попыток из-за таймаута")
+            except TelegramError as e:
+                logger.error(f"Произошла ошибка Telegram: {e}")
+                return
+
 
 async def main():
     with open('config.json', 'r') as config_file:
@@ -461,12 +488,13 @@ async def main():
     analyzer = CryptoAnalyzer(
         exchange_name=config['exchange_name'],
         symbols=config['symbols'],
-        colors=config['colors'],
-        telegram_token=config['telegram_token'],
-        chat_id=config['chat_id'],
+        telegram_token=config['telegram']['token'],
+        chat_id=config['telegram']['chat_id'],
         db_config=config['db'],
         interval=config['update_interval'],
+        stickers=config['stickers']
     )
+
     await analyzer.run(interval=config['update_interval'])
 
 
