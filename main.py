@@ -238,8 +238,19 @@ class CryptoAnalyzer:
         changes = np.diff(prices) / prices[:-1] * 100
         avg_change = np.mean(changes)
 
+        # Добавим вывод для отладки
+        # print(f"Среднее изменение для {symbol}: {avg_change:.4f}%")
+
         # Определение тренда
-        trend = "восходящий" if avg_change > 0.5 else "нисходящий" if avg_change < -0.5 else "боковой"
+        trend = "восходящий" if avg_change > 0.05 else "нисходящий" if avg_change < -0.05 else "боковой"
+
+        # Добавим проверку на более длительный период (если есть достаточно данных)
+        if len(prices) >= 10:
+            long_term_change = (prices[-1] - prices[-10]) / prices[-10] * 100
+            if long_term_change > 0.5:
+                trend = "восходящий"
+            elif long_term_change < -0.5:
+                trend = "нисходящий"
 
         # Расчет волатильности (стандартное отклонение изменений)
         volatility = np.std(changes)
