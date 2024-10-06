@@ -319,6 +319,8 @@ class CryptoAnalyzer:
         price_labels = []
         volume_labels = []
 
+        alpha = 0.35
+
         for symbol in self.symbols:
             if len(self.prices[symbol]) != len(self.timestamps):
                 logger.warning(f"Несоответствие данных для {symbol}. Пропуск построения графика.")
@@ -345,13 +347,13 @@ class CryptoAnalyzer:
             x = mdates.date2num(self.timestamps)
             slope, intercept, r_value, p_value, std_err = stats.linregress(x, normalized_prices)
             line = slope * x + intercept
-            reg_line, = ax1.plot(self.timestamps, line, color=color, linestyle='--', linewidth=1.5, alpha=0.7)
+            reg_line, = ax1.plot(self.timestamps, line, color=color, linestyle='--', linewidth=1.5, alpha=alpha)
             
             # Добавляем полиномиальную аппроксимацию для цен
             popt, _ = curve_fit(poly_func, x, normalized_prices)
             x_line = np.linspace(x.min(), x.max(), 100)
             y_line = poly_func(x_line, *popt)
-            approx_line, = ax1.plot(mdates.num2date(x_line), y_line, color=color, linestyle=':', linewidth=2, alpha=0.9)
+            approx_line, = ax1.plot(mdates.num2date(x_line), y_line, color=color, linestyle=':', linewidth=2, alpha=alpha)
 
             # Аннотации для цен
             for j, (timestamp, norm_price, price) in enumerate(zip(self.timestamps, normalized_prices, prices)):
@@ -376,12 +378,12 @@ class CryptoAnalyzer:
             # Добавляем линейную регрессию для объемов
             slope, intercept, r_value, p_value, std_err = stats.linregress(x, normalized_volumes)
             line = slope * x + intercept
-            ax2.plot(self.timestamps, line, color=color, linestyle='--', linewidth=1.5, alpha=0.7)
+            ax2.plot(self.timestamps, line, color=color, linestyle='--', linewidth=1.5, alpha=alpha)
 
             # Добавляем полиномиальную аппроксимацию для объемов
             popt, _ = curve_fit(poly_func, x, normalized_volumes)
             y_line = poly_func(x_line, *popt)
-            ax2.plot(mdates.num2date(x_line), y_line, color=color, linestyle=':', linewidth=2, alpha=0.9)
+            ax2.plot(mdates.num2date(x_line), y_line, color=color, linestyle=':', linewidth=2, alpha=alpha)
 
             # Аннотации для объемов
             for j, (timestamp, norm_volume, volume) in enumerate(zip(self.timestamps, normalized_volumes, volumes)):
