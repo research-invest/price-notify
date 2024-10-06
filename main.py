@@ -30,7 +30,8 @@ timezone = ZoneInfo("Europe/Moscow")
 
 
 class CryptoAnalyzer:
-    def __init__(self, exchange_name: str, symbols: list, telegram: dict, db_config: dict, interval: int, stickers: dict):
+    def __init__(self, exchange_name: str, symbols: list, telegram: dict, db_config: dict, interval: int,
+                 stickers: dict):
         self.dpi = 140
         self.cg = CoinGeckoAPI()
         self.indices = {
@@ -192,7 +193,7 @@ class CryptoAnalyzer:
                 formatted_volume = format_number(self.volumes[symbol][-1])
                 analysis = self.analyze_prices(symbol, self.prices[symbol][-1])
                 message += f"{symbol}:\nЦена: {formatted_price}\nОбъем: {formatted_volume}\nАнализ: {analysis}\n\n"
-                
+
                 # Простой подсчет настроения
                 if "восходящий" in analysis:
                     overall_sentiment += 1
@@ -304,7 +305,7 @@ class CryptoAnalyzer:
 
         # Функция для полиномиальной аппроксимации
         def poly_func(x, a, b, c):
-            return a * x**2 + b * x + c
+            return a * x ** 2 + b * x + c
 
         # Интервал аннотаций
         total_points = len(self.timestamps)
@@ -334,13 +335,6 @@ class CryptoAnalyzer:
 
             normalized_prices = (prices - initial_price) / initial_price * 100
 
-
-            # "colors": ["#8E44AD", "#", "#", "#3498DB", "#", "#", "#", "#2ECC71",
-            #            "#"],
-
-
-
-
             # График цены
             price_line, = ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена',
                                    linewidth=line_width, linestyle='-')
@@ -351,13 +345,13 @@ class CryptoAnalyzer:
             x = mdates.date2num(self.timestamps)
             slope, intercept, r_value, p_value, std_err = stats.linregress(x, normalized_prices)
             line = slope * x + intercept
-            reg_line, = ax1.plot(self.timestamps, line, color='#34495E', linestyle='--', linewidth=1.5, alpha=0.7)
+            reg_line, = ax1.plot(self.timestamps, line, color=color, linestyle='--', linewidth=1.5, alpha=0.7)
             
             # Добавляем полиномиальную аппроксимацию для цен
             popt, _ = curve_fit(poly_func, x, normalized_prices)
             x_line = np.linspace(x.min(), x.max(), 100)
             y_line = poly_func(x_line, *popt)
-            approx_line, = ax1.plot(mdates.num2date(x_line), y_line, color='#1ABC9C', linestyle=':', linewidth=1, alpha=0.9)
+            approx_line, = ax1.plot(mdates.num2date(x_line), y_line, color=color, linestyle=':', linewidth=2, alpha=0.9)
 
             # Аннотации для цен
             for j, (timestamp, norm_price, price) in enumerate(zip(self.timestamps, normalized_prices, prices)):
@@ -382,12 +376,12 @@ class CryptoAnalyzer:
             # Добавляем линейную регрессию для объемов
             slope, intercept, r_value, p_value, std_err = stats.linregress(x, normalized_volumes)
             line = slope * x + intercept
-            ax2.plot(self.timestamps, line, color='#34495E', linestyle='--', linewidth=1.5, alpha=0.7)
+            ax2.plot(self.timestamps, line, color=color, linestyle='--', linewidth=1.5, alpha=0.7)
 
             # Добавляем полиномиальную аппроксимацию для объемов
             popt, _ = curve_fit(poly_func, x, normalized_volumes)
             y_line = poly_func(x_line, *popt)
-            ax2.plot(mdates.num2date(x_line), y_line, color='#1ABC9C', linestyle=':', linewidth=1, alpha=0.9)
+            ax2.plot(mdates.num2date(x_line), y_line, color=color, linestyle=':', linewidth=2, alpha=0.9)
 
             # Аннотации для объемов
             for j, (timestamp, norm_volume, volume) in enumerate(zip(self.timestamps, normalized_volumes, volumes)):
@@ -398,15 +392,19 @@ class CryptoAnalyzer:
                                  ha='center', va='bottom', color=color,
                                  fontsize=8, rotation=45)
 
-        # Добавляем линии регрессии и аппроксимации в легенду
-        price_lines.extend([reg_line, approx_line])
+        # Добавляем линии регрессии и аппроксимации в легенду только один раз
+        price_lines.extend([ax1.plot([], [], color='gray', linestyle='--', linewidth=1.5)[0],
+                            ax1.plot([], [], color='gray', linestyle=':', linewidth=1)[0]])
         price_labels.extend(['Линейная регрессия', 'Полиномиальная аппроксимация'])
-        volume_lines.extend([reg_line, approx_line])
+        
+        # Для объемов добавляем только метки, так как линии уже добавлены
         volume_labels.extend(['Линейная регрессия', 'Полиномиальная аппроксимация'])
 
         # Устанавливаем легенды
-        ax1.legend(price_lines, price_labels, loc='upper left')
-        ax2.legend(volume_lines, volume_labels, loc='upper left')
+        ax1.legend(price_lines, price_labels, loc='upper left', fontsize=8)
+        ax2.legend(volume_lines + [ax2.plot([], [], color='gray', linestyle='--', linewidth=1.5)[0],
+                                   ax2.plot([], [], color='gray', linestyle=':', linewidth=1)[0]], 
+                   volume_labels, loc='upper left', fontsize=8)
 
         ax1.set_ylabel('Процентное изменение цены')
         ax1.grid(True)
@@ -536,7 +534,7 @@ class CryptoAnalyzer:
                 if attempt < max_retries - 1:
                     await asyncio.sleep(1)
                 else:
-                    logger.error(f"Не удалось отправить стике�� после {max_retries} попыток из-за таймаута")
+                    logger.error(f"Не удалось отправить стике после {max_retries} попыток из-за таймаута")
             except TelegramError as e:
                 logger.error(f"Произошла ошибка Telegram: {e}")
                 return
