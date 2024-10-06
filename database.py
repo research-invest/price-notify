@@ -33,6 +33,19 @@ class DatabaseManager:
         """
         self._execute_query(create_table_query)
 
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS trades (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            symbol     varchar(20) not null,
+            trade_type enum ('buy', 'sell') not null,
+            price      decimal(65, 10) not null,
+            amount     decimal(20, 8) not null,
+            timestamp  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+;
+        """
+        self._execute_query(create_table_query)
+
     def save_price_data(self, symbol: str, timestamp: datetime, price: float, volume: float):
         insert_query = """
             INSERT INTO price_history (symbol, timestamp, price, volume)
@@ -56,6 +69,57 @@ class DatabaseManager:
             WHERE symbol = %s AND timestamp = %s
         """
         self._execute_query(update_query, (price, volume, symbol, timestamp))
+
+    def add_trade(self, trade):
+        insert_query = """
+        INSERT INTO trades (symbol, price, amount, trade_type)
+        VALUES (%s, %s, %s, %s)
+        """
+        self._execute_query(insert_query, (trade['symbol'], trade['entry_price'], trade['volume'], trade['trade_type']))
+
+    def get_all_trades(self):
+        select_query = "SELECT * FROM trades ORDER BY created_at DESC"
+        return self._fetch_data(select_query)
+
+    def update_trade(self, trade):
+        update_query = """
+        UPDATE trades
+        SET symbol = %s, entry_price = %s, volume = %s
+        WHERE id = %s
+        """
+        self._execute_query(update_query, (trade['symbol'], trade['entry_price'], trade['volume'], trade['id']))
+
+    def delete_trade(self, trade_id):
+        delete_query = "DELETE FROM trades WHERE id = %s"
+        self._execute_query(delete_query, trade_id)
+
+    def get_trade_stats(self):
+        stats_query = """
+        SELECT 
+            COUNT(*) as total_trades,
+            SUM(volume) as total_volume,
+            AVG(entry_price) as avg_entry_price,
+            SUM(volume * entry_price) as total_value
+        FROM trades
+        """
+        stats = self._fetch_data(stats_query)
+
+        if stats['total_trades'] > 0:
+            stats['avg_entry_price'] = float(stats['avg_entry_price'])
+            stats['total_volume'] = float(stats['total_volume'])
+            stats['total_value'] = float(stats['total_value'])
+            # Здесь вы можете добавить расчет общей прибыли/убытка, если у вас есть текущие цены
+            stats['total_pnl'] = 0  # Заглушка, замените на реальный расчет
+        else:
+            stats = {
+                'total_trades': 0,
+                'total_volume': 0,
+                'avg_entry_price': 0,
+                'total_value': 0,
+                'total_pnl': 0
+            }
+
+        return stats
 
     def _execute_query(self, query, params=None):
         max_retries = 3

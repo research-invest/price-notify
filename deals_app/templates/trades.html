@@ -1,0 +1,62 @@
+{{define "trades.html"}}
+{{template "layout" .}}
+{{end}}
+
+{{define "content"}}
+<div class="card">
+    <h1>Сделки</h1>
+    <ul>
+        {{ range .trades }}
+        <li>{{ .Symbol }} - Цена: {{ .Price }}, Объем: {{ .Amount }}, Тип: {{ .TradeType }}</li>
+        {{ end }}
+    </ul>
+</div>
+<div class="card">
+    <h2>Добавить сделку</h2>
+    <form id="addTradeForm">
+        <input type="text" name="symbol" placeholder="Символ" required>
+        <input type="number" name="price" placeholder="Цена" step="0.01" required>
+        <input type="number" name="volume" placeholder="Объем" step="0.01" required>
+        <div>
+            <label>
+                <input type="radio" name="type" value="long" required> Long
+            </label>
+            <label>
+                <input type="radio" name="type" value="short" required> Short
+            </label>
+        </div>
+        <button type="submit">Добавить сделку</button>
+    </form>
+</div>
+
+<script>
+document.getElementById('addTradeForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    var formData = new FormData(this);
+    var trade = {};
+    formData.forEach((value, key) => trade[key] = value);
+
+    fetch('/trades', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(trade),
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert('Ошибка: ' + data.error);
+        } else {
+            alert('Сделка успешно добавлена');
+            location.reload();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Произошла ошибка при добавлении сделки');
+    });
+});
+</script>
+{{ end }}

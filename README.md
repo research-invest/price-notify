@@ -25,3 +25,7 @@ python3 main.py
 tmux attach -t crypto_analyzer
 
 ln -s ../render/ render
+
+
+
+openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -nodes -subj "/CN=localhost"

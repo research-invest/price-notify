@@ -28,8 +28,7 @@ timezone = ZoneInfo("Europe/Moscow")
 
 
 class CryptoAnalyzer:
-    def __init__(self, exchange_name: str, symbols: list, telegram_token: str, chat_id: str,
-                 db_config: dict, interval: int, stickers: dict):
+    def __init__(self, exchange_name: str, symbols: list, telegram: dict, db_config: dict, interval: int, stickers: dict):
         self.dpi = 140
         self.cg = CoinGeckoAPI()
         self.indices = {
@@ -44,8 +43,8 @@ class CryptoAnalyzer:
         self.symbols = [symbol['name'] for symbol in symbols]
         self.symbol_colors = {symbol['name']: symbol['color'] for symbol in symbols}
         self.symbol_line_widths = {symbol['name']: symbol.get('line_width', 1) for symbol in symbols}
-        self.bot = Bot(token=telegram_token)
-        self.chat_id = chat_id
+        self.bot = Bot(token=telegram['token'])
+        self.chat_id = telegram['chat_id']
         self.interval = interval
         self.prices = {symbol: [] for symbol in self.symbols}
         self.volumes = {symbol: [] for symbol in self.symbols}
@@ -299,7 +298,7 @@ class CryptoAnalyzer:
 
         caption = f"Анализ цен и объемов торгов за период {self.interval}s на {formatted_date_time}"
 
-        fig.suptitle(caption, fontsize=13)
+        fig.suptitle(caption, fontsize=18)
 
         # Интервал аннотаций
         total_points = len(self.timestamps)
@@ -435,7 +434,7 @@ class CryptoAnalyzer:
         buf.seek(0)
         plt.close(fig)
 
-        return buf, 'Изменение индексов'
+        return buf, 'Изменение индексов #indexes'
 
     async def send_message(self, message: str, max_retries=3):
         for attempt in range(max_retries):
@@ -499,8 +498,7 @@ async def main():
     analyzer = CryptoAnalyzer(
         exchange_name=config['exchange_name'],
         symbols=config['symbols'],
-        telegram_token=config['telegram']['token'],
-        chat_id=config['telegram']['chat_id'],
+        telegram=config['telegram'],
         db_config=config['db'],
         interval=config['update_interval'],
         stickers=config['stickers']

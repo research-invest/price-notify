@@ -1,0 +1,11 @@
+{{define "stats.html"}}
+{{template "layout" .}}
+{{end}}
+
+{{define "content"}}
+<div class="card">
+    <h1>Статистика</h1>
+    <p>Общая прибыль: {{.stats.totalProfit}}</p>
+    <p>Всего сделок: {{.stats.totalTrades}}</p>
+</div>
+{{end}}
