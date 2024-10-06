@@ -20,6 +20,8 @@ from pycoingecko import CoinGeckoAPI
 import requests
 import matplotlib.dates as mdates
 import random
+from scipy import stats
+from scipy.optimize import curve_fit
 
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -28,8 +30,7 @@ timezone = ZoneInfo("Europe/Moscow")
 
 
 class CryptoAnalyzer:
-    def __init__(self, exchange_name: str, symbols: list, telegram_token: str, chat_id: str,
-                 db_config: dict, interval: int, stickers: dict):
+    def __init__(self, exchange_name: str, symbols: list, telegram: dict, db_config: dict, interval: int, stickers: dict):
         self.dpi = 140
         self.cg = CoinGeckoAPI()
         self.indices = {
@@ -44,8 +45,8 @@ class CryptoAnalyzer:
         self.symbols = [symbol['name'] for symbol in symbols]
         self.symbol_colors = {symbol['name']: symbol['color'] for symbol in symbols}
         self.symbol_line_widths = {symbol['name']: symbol.get('line_width', 1) for symbol in symbols}
-        self.bot = Bot(token=telegram_token)
-        self.chat_id = chat_id
+        self.bot = Bot(token=telegram['token'])
+        self.chat_id = telegram['chat_id']
         self.interval = interval
         self.prices = {symbol: [] for symbol in self.symbols}
         self.volumes = {symbol: [] for symbol in self.symbols}
@@ -244,7 +245,7 @@ class CryptoAnalyzer:
         # Определение тренда
         trend = "восходящий" if avg_change > 0.05 else "нисходящий" if avg_change < -0.05 else "боковой"
 
-        # Добавим проверку на более длительный период (если есть достаточно данных)
+        # Добавим проверку на боле длительный период (если есть достаточно данных)
         if len(prices) >= 10:
             long_term_change = (prices[-1] - prices[-10]) / prices[-10] * 100
             if long_term_change > 0.5:
@@ -299,13 +300,23 @@ class CryptoAnalyzer:
 
         caption = f"Анализ цен и объемов торгов за период {self.interval}s на {formatted_date_time}"
 
-        fig.suptitle(caption, fontsize=13)
+        fig.suptitle(caption, fontsize=18)
+
+        # Функция для полиномиальной аппроксимации
+        def poly_func(x, a, b, c):
+            return a * x**2 + b * x + c
 
         # Интервал аннотаций
         total_points = len(self.timestamps)
-        points_per_annotation = max(1, int(total_points / 10))  # аннотация на каждой 10-й точке
-        min_interval_seconds = 300  # Минимальный интервал в секундах между аннотациями
+        points_per_annotation = max(1, int(total_points / 10))
+        min_interval_seconds = 300
         annotation_interval = max(points_per_annotation, int(min_interval_seconds / self.interval))
+
+        # Создаем пустые списки для хранения линий легенды
+        price_lines = []
+        volume_lines = []
+        price_labels = []
+        volume_labels = []
 
         for symbol in self.symbols:
             if len(self.prices[symbol]) != len(self.timestamps):
@@ -323,14 +334,34 @@ class CryptoAnalyzer:
 
             normalized_prices = (prices - initial_price) / initial_price * 100
 
+
+            # "colors": ["#8E44AD", "#", "#", "#3498DB", "#", "#", "#", "#2ECC71",
+            #            "#"],
+
+
+
+
             # График цены
-            line, = ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена',
-                             linewidth=line_width, linestyle='-')
+            price_line, = ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена',
+                                   linewidth=line_width, linestyle='-')
+            price_lines.append(price_line)
+            price_labels.append(f'{symbol} Цена')
+
+            # Добавляем линейную регрессию для цен
+            x = mdates.date2num(self.timestamps)
+            slope, intercept, r_value, p_value, std_err = stats.linregress(x, normalized_prices)
+            line = slope * x + intercept
+            reg_line, = ax1.plot(self.timestamps, line, color='#34495E', linestyle='--', linewidth=1.5, alpha=0.7)
+            
+            # Добавляем полиномиальную аппроксимацию для цен
+            popt, _ = curve_fit(poly_func, x, normalized_prices)
+            x_line = np.linspace(x.min(), x.max(), 100)
+            y_line = poly_func(x_line, *popt)
+            approx_line, = ax1.plot(mdates.num2date(x_line), y_line, color='#1ABC9C', linestyle=':', linewidth=1, alpha=0.9)
 
             # Аннотации для цен
             for j, (timestamp, norm_price, price) in enumerate(zip(self.timestamps, normalized_prices, prices)):
-                if j % annotation_interval == 0 or j == len(
-                        prices) - 1:  # Аннотируем каждую 3-ю точку и последнюю %j % 3 == 0 or
+                if j % annotation_interval == 0 or j == len(prices) - 1:
                     ax1.annotate(f'{format_number(price)}',
                                  xy=(timestamp, norm_price),
                                  xytext=(0, 5), textcoords='offset points',
@@ -343,28 +374,47 @@ class CryptoAnalyzer:
             normalized_volumes = (volumes - initial_volume) / initial_volume * 100
 
             # График объема
-            ax2.plot(self.timestamps, normalized_volumes, color=color, label=f'{symbol} Объем',
-                     linewidth=line_width, linestyle='-')
+            volume_line, = ax2.plot(self.timestamps, normalized_volumes, color=color, label=f'{symbol} Объем',
+                                    linewidth=line_width, linestyle='-')
+            volume_lines.append(volume_line)
+            volume_labels.append(f'{symbol} Объем')
+
+            # Добавляем линейную регрессию для объемов
+            slope, intercept, r_value, p_value, std_err = stats.linregress(x, normalized_volumes)
+            line = slope * x + intercept
+            ax2.plot(self.timestamps, line, color='#34495E', linestyle='--', linewidth=1.5, alpha=0.7)
+
+            # Добавляем полиномиальную аппроксимацию для объемов
+            popt, _ = curve_fit(poly_func, x, normalized_volumes)
+            y_line = poly_func(x_line, *popt)
+            ax2.plot(mdates.num2date(x_line), y_line, color='#1ABC9C', linestyle=':', linewidth=1, alpha=0.9)
 
             # Аннотации для объемов
             for j, (timestamp, norm_volume, volume) in enumerate(zip(self.timestamps, normalized_volumes, volumes)):
-                if j % annotation_interval == 0 or j == len(
-                        volumes) - 1:  # Аннотируем каждую 3-ю точку и последнюю j % 3 == 0 or
+                if j % annotation_interval == 0 or j == len(volumes) - 1:
                     ax2.annotate(f'{format_number(volume)}',
                                  xy=(timestamp, norm_volume),
                                  xytext=(0, 5), textcoords='offset points',
                                  ha='center', va='bottom', color=color,
                                  fontsize=8, rotation=45)
 
+        # Добавляем линии регрессии и аппроксимации в легенду
+        price_lines.extend([reg_line, approx_line])
+        price_labels.extend(['Линейная регрессия', 'Полиномиальная аппроксимация'])
+        volume_lines.extend([reg_line, approx_line])
+        volume_labels.extend(['Линейная регрессия', 'Полиномиальная аппроксимация'])
+
+        # Устанавливаем легенды
+        ax1.legend(price_lines, price_labels, loc='upper left')
+        ax2.legend(volume_lines, volume_labels, loc='upper left')
+
         ax1.set_ylabel('Процентное изменение цены')
-        ax1.legend(loc='upper left')
         ax1.grid(True)
         ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.1f}%"))
         ax1.axhline(y=0, color='gray', linestyle='--')
 
         ax2.set_xlabel('Время')
         ax2.set_ylabel('Процентное изменение объема')
-        ax2.legend(loc='upper left')
         ax2.grid(True)
         ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.1f}%"))
         ax2.axhline(y=0, color='gray', linestyle='--')
@@ -435,7 +485,7 @@ class CryptoAnalyzer:
         buf.seek(0)
         plt.close(fig)
 
-        return buf, 'Изменение индексов'
+        return buf, 'Изменение индексов #indexes'
 
     async def send_message(self, message: str, max_retries=3):
         for attempt in range(max_retries):
@@ -486,7 +536,7 @@ class CryptoAnalyzer:
                 if attempt < max_retries - 1:
                     await asyncio.sleep(1)
                 else:
-                    logger.error(f"Не удалось отправить стикер после {max_retries} попыток из-за таймаута")
+                    logger.error(f"Не удалось отправить стике�� после {max_retries} попыток из-за таймаута")
             except TelegramError as e:
                 logger.error(f"Произошла ошибка Telegram: {e}")
                 return
@@ -499,8 +549,7 @@ async def main():
     analyzer = CryptoAnalyzer(
         exchange_name=config['exchange_name'],
         symbols=config['symbols'],
-        telegram_token=config['telegram']['token'],
-        chat_id=config['telegram']['chat_id'],
+        telegram=config['telegram'],
         db_config=config['db'],
         interval=config['update_interval'],
         stickers=config['stickers']

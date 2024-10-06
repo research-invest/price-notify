@@ -6,3 +6,4 @@ yfinance
 requests
 pycoingecko
 mysql-connector-python
+scipy
