@@ -31,7 +31,7 @@ timezone = ZoneInfo("Europe/Moscow")
 
 class CryptoAnalyzer:
     def __init__(self, exchange_name: str, symbols: list, telegram: dict, db_config: dict, interval: int,
-                 stickers: dict):
+                 stickers: dict, is_indexes: bool):
         self.dpi = 140
         self.cg = CoinGeckoAPI()
         self.indices = {
@@ -58,6 +58,7 @@ class CryptoAnalyzer:
         self.load_historical_data()
         self.last_indices_update = datetime.now(timezone)
         self.stickers = stickers
+        self.is_indexes = is_indexes
 
     def load_historical_data(self):
         end_date = datetime.now(timezone)
@@ -108,49 +109,51 @@ class CryptoAnalyzer:
         try:
             current_time = datetime.now()
 
-            # Обновляем данные S&P 500
-            sp500 = yf.Ticker("^GSPC")
-            latest_sp500 = float(sp500.history(period="1d")['Close'].iloc[-1])
-            self.db_manager.save_price_data('SP500', current_time, latest_sp500, 0)  # объем 0 для S&P 500
-            self.indices['SP500']['values'].append(latest_sp500)
-            self.indices['SP500']['timestamps'].append(current_time)
+            if self.is_indexes:
+                # Обновляем данные S&P 500
+                sp500 = yf.Ticker("^GSPC")
+                latest_sp500 = float(sp500.history(period="1d")['Close'].iloc[-1])
+                self.db_manager.save_price_data('SP500', current_time, latest_sp500, 0)  # объем 0 для S&P 500
+                self.indices['SP500']['values'].append(latest_sp500)
+                self.indices['SP500']['timestamps'].append(current_time)
 
-            # Обновляем индекс страха и жадности
-            fear_greed_data = requests.get('https://api.alternative.me/fng/').json()
-            fear_greed_value = int(fear_greed_data['data'][0]['value'])
-            self.db_manager.save_price_data('Fear&Greed', current_time, fear_greed_value, 0)  # объем 0 для Fear&Greed
-            self.indices['Fear&Greed']['values'].append(fear_greed_value)
-            self.indices['Fear&Greed']['timestamps'].append(current_time)
+                # Обновляем индекс страха и жадности
+                fear_greed_data = requests.get('https://api.alternative.me/fng/').json()
+                fear_greed_value = int(fear_greed_data['data'][0]['value'])
+                self.db_manager.save_price_data('Fear&Greed', current_time, fear_greed_value,
+                                                0)  # объем 0 для Fear&Greed
+                self.indices['Fear&Greed']['values'].append(fear_greed_value)
+                self.indices['Fear&Greed']['timestamps'].append(current_time)
 
-            # Обновляем индекс доминирования биткоина
-            bitcoin_data = self.cg.get_global()
-            btc_dominance = float(bitcoin_data['market_cap_percentage']['btc'])
-            self.db_manager.save_price_data('BTC_Dominance', current_time, btc_dominance,
-                                            0)  # объем 0 для BTC_Dominance
-            self.indices['BTC_Dominance']['values'].append(btc_dominance)
-            self.indices['BTC_Dominance']['timestamps'].append(current_time)
+                # Обновляем индекс доминирования биткоина
+                bitcoin_data = self.cg.get_global()
+                btc_dominance = float(bitcoin_data['market_cap_percentage']['btc'])
+                self.db_manager.save_price_data('BTC_Dominance', current_time, btc_dominance,
+                                                0)  # объем 0 для BTC_Dominance
+                self.indices['BTC_Dominance']['values'].append(btc_dominance)
+                self.indices['BTC_Dominance']['timestamps'].append(current_time)
 
-            # Добавим также общую капитализацию рынка
-            total_market_cap = float(bitcoin_data['total_market_cap']['usd'])
+                # Добавим также общую капитализацию рынка
+                total_market_cap = float(bitcoin_data['total_market_cap']['usd'])
 
-            self.db_manager.save_price_data('Total_Market_Cap', current_time, total_market_cap,
-                                            0)  # объем 0 для Total_Market_Cap
-            self.indices['Total_Market_Cap']['values'].append(total_market_cap)
-            self.indices['Total_Market_Cap']['timestamps'].append(current_time)
+                self.db_manager.save_price_data('Total_Market_Cap', current_time, total_market_cap,
+                                                0)  # объем 0 для Total_Market_Cap
+                self.indices['Total_Market_Cap']['values'].append(total_market_cap)
+                self.indices['Total_Market_Cap']['timestamps'].append(current_time)
 
-            # И изменение капитализации за 24 часа
-            market_cap_change_24h = float(bitcoin_data['market_cap_change_percentage_24h_usd'])
-            self.db_manager.save_price_data('Total_Market_Cap', current_time, market_cap_change_24h,
-                                            0)  # объем 0 для Market_Cap_Change_24h
-            self.indices['Market_Cap_Change_24h']['values'].append(market_cap_change_24h)
-            self.indices['Market_Cap_Change_24h']['timestamps'].append(current_time)
+                # И изменение капитализации за 24 часа
+                market_cap_change_24h = float(bitcoin_data['market_cap_change_percentage_24h_usd'])
+                self.db_manager.save_price_data('Total_Market_Cap', current_time, market_cap_change_24h,
+                                                0)  # объем 0 для Market_Cap_Change_24h
+                self.indices['Market_Cap_Change_24h']['values'].append(market_cap_change_24h)
+                self.indices['Market_Cap_Change_24h']['timestamps'].append(current_time)
 
-            # Обновляем NASDAQ-100
-            nasdaq = yf.Ticker("^NDX")
-            latest_nasdaq = float(nasdaq.history(period="1d")['Close'].iloc[-1])
-            self.db_manager.save_price_data('NASDAQ', current_time, latest_nasdaq, 0)  # объем 0 для NASDAQ
-            self.indices['NASDAQ']['values'].append(latest_nasdaq)
-            self.indices['NASDAQ']['timestamps'].append(current_time)
+                # Обновляем NASDAQ-100
+                nasdaq = yf.Ticker("^NDX")
+                latest_nasdaq = float(nasdaq.history(period="1d")['Close'].iloc[-1])
+                self.db_manager.save_price_data('NASDAQ', current_time, latest_nasdaq, 0)  # объем 0 для NASDAQ
+                self.indices['NASDAQ']['values'].append(latest_nasdaq)
+                self.indices['NASDAQ']['timestamps'].append(current_time)
 
             if not self.timestamps or current_time > self.timestamps[-1]:
                 self.timestamps.append(current_time)
@@ -200,7 +203,8 @@ class CryptoAnalyzer:
                 elif "нисходящий" in analysis:
                     overall_sentiment -= 1
 
-            message += f"S&P 500: {latest_sp500:.2f}\n\n"
+            if self.is_indexes:
+                message += f"S&P 500: {latest_sp500:.2f}\n\n"
 
             if len(self.timestamps) > 100:
                 self.timestamps = self.timestamps[-100:]
@@ -215,7 +219,7 @@ class CryptoAnalyzer:
 
             # Отправляем график индексов раз в час
             current_time = datetime.now(timezone)
-            if current_time.minute == 0 and (current_time - self.last_indices_update).total_seconds() >= 3600:
+            if self.is_indexes and current_time.minute == 0 and (current_time - self.last_indices_update).total_seconds() >= 3600:
                 indices_chart = self.create_indices_chart()
                 await self.send_chart(indices_chart)
                 self.last_indices_update = current_time.replace(minute=0, second=0, microsecond=0)
@@ -246,7 +250,7 @@ class CryptoAnalyzer:
         # Определение тренда
         trend = "восходящий" if avg_change > 0.05 else "нисходящий" if avg_change < -0.05 else "боковой"
 
-        # Добавим проверку на боле длительный период (если есть достаточно данных)
+        # Добавим проверку на более длительный период (если есть достаточно данных)
         if len(prices) >= 10:
             long_term_change = (prices[-1] - prices[-10]) / prices[-10] * 100
             if long_term_change > 0.5:
@@ -323,13 +327,13 @@ class CryptoAnalyzer:
 
         def add_slope_annotation(ax, x, y, slope, color):
             angle = math.degrees(math.atan(slope))
-            ax.annotate(f'{angle:.1f}°', 
-                        xy=(x[-1], y[-1]), 
-                        xytext=(5, 0), 
+            ax.annotate(f'{angle:.1f}°',
+                        xy=(x[-1], y[-1]),
+                        xytext=(5, 0),
                         textcoords='offset points',
                         color=color,
                         fontsize=10,
-                        ha='left', 
+                        ha='left',
                         va='center')
 
         for symbol in self.symbols:
@@ -361,13 +365,14 @@ class CryptoAnalyzer:
             line = slope * x_scaled + intercept
             reg_line, = ax1.plot(self.timestamps, line, color=color, linestyle='--', linewidth=1.5, alpha=alpha)
             add_slope_annotation(ax1, x, line, slope, color)
-            
+
             # Добавляем полиномиальную аппроксимацию для цен
             try:
                 popt, _ = curve_fit(poly_func, x_scaled, normalized_prices)
                 x_line = np.linspace(0, 1, 100)
                 y_line = poly_func(x_line, *popt)
-                approx_line, = ax1.plot(mdates.num2date(x[0] + x_line * (x[-1] - x[0])), y_line, color=color, linestyle=':', linewidth=2, alpha=alpha)
+                approx_line, = ax1.plot(mdates.num2date(x[0] + x_line * (x[-1] - x[0])), y_line, color=color,
+                                        linestyle=':', linewidth=2, alpha=alpha)
                 # Вычисляем наклон в последней точке полиномиальной аппроксимации
                 poly_slope = 2 * popt[0] * x_line[-1] + popt[1]
                 add_slope_annotation(ax1, x, y_line, poly_slope, color)
@@ -405,7 +410,8 @@ class CryptoAnalyzer:
             try:
                 popt, _ = curve_fit(poly_func, x_scaled, normalized_volumes)
                 y_line = poly_func(x_line, *popt)
-                ax2.plot(mdates.num2date(x[0] + x_line * (x[-1] - x[0])), y_line, color=color, linestyle=':', linewidth=2, alpha=alpha)
+                ax2.plot(mdates.num2date(x[0] + x_line * (x[-1] - x[0])), y_line, color=color, linestyle=':',
+                         linewidth=2, alpha=alpha)
                 # Вычисляем наклон в последней точке полиномиальной аппроксимации
                 poly_slope = 2 * popt[0] * x_line[-1] + popt[1]
                 add_slope_annotation(ax2, x, y_line, poly_slope, color)
@@ -425,14 +431,14 @@ class CryptoAnalyzer:
         price_lines.extend([ax1.plot([], [], color='gray', linestyle='--', linewidth=1.5)[0],
                             ax1.plot([], [], color='gray', linestyle=':', linewidth=1)[0]])
         price_labels.extend(['Линейная регрессия', 'Полиномиальная аппроксимация'])
-        
+
         # Для объемов добавляем только метки, так как линии уже добавлены
         volume_labels.extend(['Линейная регрессия', 'Полиномиальная аппроксимация'])
 
         # Устанавливаем легенды
         ax1.legend(price_lines, price_labels, loc='upper left', fontsize=8)
         ax2.legend(volume_lines + [ax2.plot([], [], color='gray', linestyle='--', linewidth=1.5)[0],
-                                   ax2.plot([], [], color='gray', linestyle=':', linewidth=1)[0]], 
+                                   ax2.plot([], [], color='gray', linestyle=':', linewidth=1)[0]],
                    volume_labels, loc='upper left', fontsize=8)
 
         ax1.set_ylabel('Процентное изменение цены')
@@ -579,7 +585,8 @@ async def main():
         telegram=config['telegram'],
         db_config=config['db'],
         interval=config['update_interval'],
-        stickers=config['stickers']
+        stickers=config['stickers'],
+        is_indexes=config['is_indexes'],
     )
 
     await analyzer.run(interval=config['update_interval'])
