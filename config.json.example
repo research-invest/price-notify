@@ -11,6 +11,21 @@
             "name": "TAO/USDT",
             "color": "#2ECC71",
             "line_width": 1
+        },
+        {
+            "name": "SOL/USDT",
+            "color": "#E74C3C",
+            "line_width": 1
+        },
+        {
+            "name": "DOGE/USDT",
+            "color": "#3498DB",
+            "line_width": 1
+        },
+        {
+            "name": "AUDIO/USDT",
+            "color": "#1ABC9C",
+            "line_width": 1
         }
     ],
     "update_interval": 60,

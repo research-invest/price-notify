@@ -219,7 +219,8 @@ class CryptoAnalyzer:
 
             # Отправляем график индексов раз в час
             current_time = datetime.now(timezone)
-            if self.is_indexes and current_time.minute == 0 and (current_time - self.last_indices_update).total_seconds() >= 3600:
+            if self.is_indexes and current_time.minute == 0 and (
+                    current_time - self.last_indices_update).total_seconds() >= 3600:
                 indices_chart = self.create_indices_chart()
                 await self.send_chart(indices_chart)
                 self.last_indices_update = current_time.replace(minute=0, second=0, microsecond=0)
@@ -303,7 +304,7 @@ class CryptoAnalyzer:
 
         formatted_date_time = datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S")
 
-        caption = f"Анализ цен и объемов торгов за период {self.interval}s на {formatted_date_time}"
+        caption = f"Анализ цен и объемов торгов за период {self.interval}s на {formatted_date_time} #{self.interval}"
 
         fig.suptitle(caption, fontsize=18)
 
