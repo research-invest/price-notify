@@ -71,6 +71,7 @@ class CryptoAnalyzer:
                     logger.info(f"Обновление для интервала {interval_name}")
                     
                     all_data = {}
+                    message = ''
                     for symbol in self.symbols:
                         data = self.get_price_and_volume_data(symbol, interval_seconds)
                         if data:
@@ -78,16 +79,16 @@ class CryptoAnalyzer:
                             self.prices[symbol] = [item['last_price'] for item in data]
                             self.volumes[symbol] = [item['volume'] for item in data]
                             self.timestamps = [datetime.fromisoformat(item['timestamp'].rstrip('Z')).replace(tzinfo=timezone) for item in data]
+
+                            current_price = self.prices[symbol][-1]
+                            formatted_price = format_number(current_price)
+                            formatted_volume = format_number(self.volumes[symbol][-1])
+                            analysis = self.analyze_prices(symbol, current_price)
+                            message += f"{symbol}:\nЦена: {formatted_price}\nОбъем: {formatted_volume}\nАнализ: {analysis}\n\n"
                         else:
                             logger.warning(f"Не удалось получить данные для {symbol}")
 
                     if all_data:
-                        message = ''
-                        current_price = self.prices[symbol][-1]
-                        formatted_price = format_number(current_price)
-                        formatted_volume = format_number(self.volumes[symbol][-1])
-                        analysis = self.analyze_prices(symbol, current_price)
-                        message += f"{symbol}:\nЦена: {formatted_price}\nОбъем: {formatted_volume}\nАнализ: {analysis}\n\n"
                         await self.send_message(message)
 
                         price_volume_chart = self.create_price_volume_chart(interval_name, interval_seconds)
