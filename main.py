@@ -1,20 +1,17 @@
 import os
-import ccxt
 import asyncio
 from telegram import Bot
 from telegram.error import TimedOut, TelegramError
 import matplotlib.pyplot as plt
 from io import BytesIO
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import json
 import logging
 import math
 from utils import format_number
-from database import DatabaseManager
 import traceback
-import yfinance as yf
 from matplotlib.dates import DateFormatter
 from pycoingecko import CoinGeckoAPI
 import requests
@@ -26,211 +23,80 @@ from scipy.optimize import curve_fit
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-timezone = ZoneInfo("Europe/Moscow")
+# timezone = ZoneInfo("Europe/Moscow")
+timezone = ZoneInfo("UTC")
 
 
 class CryptoAnalyzer:
-    def __init__(self, exchange_name: str, symbols: list, telegram: dict, db_config: dict, interval: int,
-                 stickers: dict, is_indexes: bool):
+    def __init__(self, symbols: list, telegram: dict, intervals: dict,
+                 stickers: dict, tickers_api_url: str):
         self.dpi = 140
-        self.cg = CoinGeckoAPI()
-        self.indices = {
-            'SP500': {'values': [], 'timestamps': []},
-            'Fear&Greed': {'values': [], 'timestamps': []},
-            'BTC_Dominance': {'values': [], 'timestamps': []},
-            'NASDAQ': {'values': [], 'timestamps': []},
-            'Total_Market_Cap': {'values': [], 'timestamps': []},
-            'Market_Cap_Change_24h': {'values': [], 'timestamps': []}
-        }
-        self.exchange = getattr(ccxt, exchange_name)()
         self.symbols = [symbol['name'] for symbol in symbols]
         self.symbol_colors = {symbol['name']: symbol['color'] for symbol in symbols}
         self.symbol_line_widths = {symbol['name']: symbol.get('line_width', 1) for symbol in symbols}
         self.bot = Bot(token=telegram['token'])
         self.chat_id = telegram['chat_id']
-        self.interval = interval
+        self.intervals = intervals
         self.prices = {symbol: [] for symbol in self.symbols}
         self.volumes = {symbol: [] for symbol in self.symbols}
         self.timestamps = []
-        self.db_manager = DatabaseManager(db_config)
-        self.db_manager.connect()
-        self.db_manager.create_tables()
-        self.load_historical_data()
-        self.last_indices_update = datetime.now(timezone)
         self.stickers = stickers
-        self.is_indexes = is_indexes
+        self.tickers_api_url = tickers_api_url
+        self.last_update = {interval: datetime.now(timezone) for interval in intervals}
 
-    def load_historical_data(self):
-        end_date = datetime.now(timezone)
-        start_date = end_date - timedelta(days=1)
-        all_timestamps = set()
-
-        # Сначала соберем все уникальные временные метки
-        for symbol in self.symbols:
-            historical_data = self.db_manager.get_historical_data(symbol, start_date, end_date)
-            all_timestamps.update(row[0] for row in historical_data)
-
-        # Отсортируем временные метки
-        self.timestamps = sorted(all_timestamps)
-
-        for index in self.indices:
-            try:
-                historical_data = self.db_manager.get_historical_data(index, start_date, end_date)
-                data_dict = {row[0]: (float(row[1]), float(row[2])) for row in historical_data}
-
-                self.indices[index]['timestamps'] = list(data_dict.keys())
-                self.indices[index]['values'] = [value[0] for value in data_dict.values()]
-
-            except Exception as e:
-                print(f"Error loading data for {index}: {e}")
-                self.indices[index]['timestamps'] = []
-                self.indices[index]['values'] = []
-
-        # Теперь заполним данные для каждого символа
-        for symbol in self.symbols:
-            historical_data = self.db_manager.get_historical_data(symbol, start_date, end_date)
-            data_dict = {row[0]: (float(row[1]), float(row[2])) for row in historical_data}
-
-            self.prices[symbol] = []
-            self.volumes[symbol] = []
-
-            for timestamp in self.timestamps:
-                if timestamp in data_dict:
-                    self.prices[symbol].append(data_dict[timestamp][0])
-                    self.volumes[symbol].append(data_dict[timestamp][1])
-                else:
-                    # Если данных нет, используем предыдущее значение или None
-                    self.prices[symbol].append(self.prices[symbol][-1] if self.prices[symbol] else None)
-                    self.volumes[symbol].append(self.volumes[symbol][-1] if self.volumes[symbol] else None)
-
-            logger.info(f"Загружено {len(historical_data)} исторических записей для {symbol}")
+    def get_price_and_volume_data(self, symbol: str, interval: int):
+        try:
+            url = f"{self.tickers_api_url}/tickers?symbol={symbol}&interval={interval}"
+            response = requests.get(url)
+            response.raise_for_status()
+            data = response.json()
+            
+            if not data:
+                raise ValueError(f"Нет данных для символа {symbol}")
+            
+            return data
+        except requests.RequestException as e:
+            logging.error(f"Ошибка при получении данных для {symbol}: {e}")
+            return None
+        except (KeyError, IndexError) as e:
+            logging.error(f"Ошибка в формате данных для {symbol}: {e}")
+            return None
 
     async def update_prices(self):
         try:
-            current_time = datetime.now()
-
-            if self.is_indexes:
-                # Обновляем данные S&P 500
-                sp500 = yf.Ticker("^GSPC")
-                latest_sp500 = float(sp500.history(period="1d")['Close'].iloc[-1])
-                self.db_manager.save_price_data('SP500', current_time, latest_sp500, 0)  # объем 0 для S&P 500
-                self.indices['SP500']['values'].append(latest_sp500)
-                self.indices['SP500']['timestamps'].append(current_time)
-
-                # Обновляем индекс страха и жадности
-                fear_greed_data = requests.get('https://api.alternative.me/fng/').json()
-                fear_greed_value = int(fear_greed_data['data'][0]['value'])
-                self.db_manager.save_price_data('Fear&Greed', current_time, fear_greed_value,
-                                                0)  # объем 0 для Fear&Greed
-                self.indices['Fear&Greed']['values'].append(fear_greed_value)
-                self.indices['Fear&Greed']['timestamps'].append(current_time)
-
-                # Обновляем индекс доминирования биткоина
-                bitcoin_data = self.cg.get_global()
-                btc_dominance = float(bitcoin_data['market_cap_percentage']['btc'])
-                self.db_manager.save_price_data('BTC_Dominance', current_time, btc_dominance,
-                                                0)  # объем 0 для BTC_Dominance
-                self.indices['BTC_Dominance']['values'].append(btc_dominance)
-                self.indices['BTC_Dominance']['timestamps'].append(current_time)
-
-                # Добавим также общую капитализацию рынка
-                total_market_cap = float(bitcoin_data['total_market_cap']['usd'])
-
-                self.db_manager.save_price_data('Total_Market_Cap', current_time, total_market_cap,
-                                                0)  # объем 0 для Total_Market_Cap
-                self.indices['Total_Market_Cap']['values'].append(total_market_cap)
-                self.indices['Total_Market_Cap']['timestamps'].append(current_time)
-
-                # И изменение капитализации за 24 часа
-                market_cap_change_24h = float(bitcoin_data['market_cap_change_percentage_24h_usd'])
-                self.db_manager.save_price_data('Total_Market_Cap', current_time, market_cap_change_24h,
-                                                0)  # объем 0 для Market_Cap_Change_24h
-                self.indices['Market_Cap_Change_24h']['values'].append(market_cap_change_24h)
-                self.indices['Market_Cap_Change_24h']['timestamps'].append(current_time)
-
-                # Обновляем NASDAQ-100
-                nasdaq = yf.Ticker("^NDX")
-                latest_nasdaq = float(nasdaq.history(period="1d")['Close'].iloc[-1])
-                self.db_manager.save_price_data('NASDAQ', current_time, latest_nasdaq, 0)  # объем 0 для NASDAQ
-                self.indices['NASDAQ']['values'].append(latest_nasdaq)
-                self.indices['NASDAQ']['timestamps'].append(current_time)
-
-            if not self.timestamps or current_time > self.timestamps[-1]:
-                self.timestamps.append(current_time)
-                for symbol in self.symbols:
-                    price, volume = self.get_price_and_volume(symbol)
-                    price = float(price)
-                    volume = float(volume)
-
-                    self.prices[symbol].append(price)
-                    self.volumes[symbol].append(volume)
-
-                    # Сохранение данных в БД
-                    try:
-                        self.db_manager.save_price_data(symbol, current_time, price, volume)
-                    except Exception as db_error:
-                        logger.error(f"Ошибка при сохранении данных в БД: {db_error}")
-            else:
-                # Обновляем последнюю запись, если время совпадает
-                for symbol in self.symbols:
-                    price, volume = self.get_price_and_volume(symbol)
-                    price = float(price)
-                    volume = float(volume)
-
-                    self.prices[symbol][-1] = price
-                    self.volumes[symbol][-1] = volume
-                    # Обновляем запись в БД
-                    try:
-                        self.db_manager.update_price_data(symbol, current_time, price, volume)
-                    except Exception as db_error:
-                        logger.error(f"Ошибка при обновлении данных в БД: {db_error}")
-
-            # Тихий режим
-            # if 2 <= datetime.now(timezone).hour < 6:
-            #     return
-
-            message = ''
-            overall_sentiment = 0
-            for symbol in self.symbols:
-                formatted_price = format_number(self.prices[symbol][-1])
-                formatted_volume = format_number(self.volumes[symbol][-1])
-                analysis = self.analyze_prices(symbol, self.prices[symbol][-1])
-                message += f"{symbol}:\nЦена: {formatted_price}\nОбъем: {formatted_volume}\nАнализ: {analysis}\n\n"
-
-                # Простой подсчет настроения
-                if "восходящий" in analysis:
-                    overall_sentiment += 1
-                elif "нисходящий" in analysis:
-                    overall_sentiment -= 1
-
-            if self.is_indexes:
-                message += f"S&P 500: {latest_sp500:.2f}\n\n"
-
-            if len(self.timestamps) > 100:
-                self.timestamps = self.timestamps[-100:]
-                for symbol in self.symbols:
-                    self.prices[symbol] = self.prices[symbol][-100:]
-                    self.volumes[symbol] = self.volumes[symbol][-100:]
-
-            await self.send_message(message)
-
-            price_volume_chart = self.create_price_volume_chart()
-            await self.send_chart(price_volume_chart)
-
-            # Отправляем график индексов раз в час
             current_time = datetime.now(timezone)
-            if self.is_indexes and current_time.minute == 0 and (
-                    current_time - self.last_indices_update).total_seconds() >= 3600:
-                indices_chart = self.create_indices_chart()
-                await self.send_chart(indices_chart)
-                self.last_indices_update = current_time.replace(minute=0, second=0, microsecond=0)
 
-            # Отправка стикера на основе общего настроения
-            if overall_sentiment > 0:
-                await self.send_sticker(random.choice(self.stickers['positive']))
-            elif overall_sentiment < 0:
-                await self.send_sticker(random.choice(self.stickers['negative']))
+            for interval_name, interval_seconds in self.intervals.items():
+                if current_time - self.last_update[interval_name] >= timedelta(seconds=interval_seconds):
+                    logger.info(f"Обновление для интервала {interval_name}")
+                    
+                    all_data = {}
+                    for symbol in self.symbols:
+                        data = self.get_price_and_volume_data(symbol, interval_seconds)
+                        if data:
+                            all_data[symbol] = data
+                            self.prices[symbol] = [item['last_price'] for item in data]
+                            self.volumes[symbol] = [item['volume'] for item in data]
+                            self.timestamps = [datetime.fromisoformat(item['timestamp'].rstrip('Z')).replace(tzinfo=timezone) for item in data]
+                        else:
+                            logger.warning(f"Не удалось получить данные для {symbol}")
 
+                    if all_data:
+                        message = ''
+                        current_price = self.prices[symbol][-1]
+                        formatted_price = format_number(current_price)
+                        formatted_volume = format_number(self.volumes[symbol][-1])
+                        analysis = self.analyze_prices(symbol, current_price)
+                        message += f"{symbol}:\nЦена: {formatted_price}\nОбъем: {formatted_volume}\nАнализ: {analysis}\n\n"
+                        await self.send_message(message)
+
+                        price_volume_chart = self.create_price_volume_chart(interval_name, interval_seconds)
+                        await self.send_chart(price_volume_chart)
+
+                        # Отправляем стикер
+                        await self.send_sticker(self.choose_sticker(all_data))
+                    
+                    self.last_update[interval_name] = current_time
 
         except Exception as e:
             logger.error(f"Error in update_prices: {e}\n{traceback.format_exc()}")
@@ -292,11 +158,7 @@ class CryptoAnalyzer:
 
         return analysis
 
-    def get_price_and_volume(self, symbol: str):
-        ticker = self.exchange.fetch_ticker(symbol)
-        return ticker['last'], ticker['quoteVolume']
-
-    def create_price_volume_chart(self):
+    def create_price_volume_chart(self, interval_name, interval_seconds):
         if len(self.timestamps) < 2:
             return None
 
@@ -304,7 +166,7 @@ class CryptoAnalyzer:
 
         formatted_date_time = datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S")
 
-        caption = f"Анализ цен и объемов торгов за период {self.interval}s на {formatted_date_time} #{self.interval}"
+        caption = f"Анализ цен и объемов торгов за период {interval_name} на {formatted_date_time} #{interval_name}"
 
         fig.suptitle(caption, fontsize=18)
 
@@ -316,7 +178,7 @@ class CryptoAnalyzer:
         total_points = len(self.timestamps)
         points_per_annotation = max(1, int(total_points / 10))
         min_interval_seconds = 300
-        annotation_interval = max(points_per_annotation, int(min_interval_seconds / self.interval))
+        annotation_interval = max(points_per_annotation, int(min_interval_seconds / interval_seconds))
 
         # Создаем пустые списки для хранения линий легенды
         price_lines = []
@@ -469,57 +331,6 @@ class CryptoAnalyzer:
 
         return buf, caption
 
-    def create_indices_chart(self):
-        fig, ax = plt.subplots(figsize=(12, 8), constrained_layout=True)
-
-        colors = ['#2C3E50', '#8E44AD', '#F39C12', '#16A085', '#27AE60', '#C0392B']
-        index_lines = {}
-
-        for i, (index, color) in enumerate(zip(self.indices, colors)):
-            values = np.array(self.indices[index]['values'])
-            timestamps = self.indices[index]['timestamps']
-
-            if len(values) > 0 and len(timestamps) > 0:
-                if index in ['Total_Market_Cap', 'Market_Cap_Change_24h']:
-                    continue
-                    # line, = ax.plot(timestamps, values, color=color, label=index)
-                else:
-                    initial_value = values[0]
-                    normalized_values = (values - initial_value) / initial_value * 100
-                    line, = ax.plot(timestamps, normalized_values, color=color, label=index)
-
-                index_lines[index] = line
-
-                # Добавляем аннотации
-                if len(values) > 1:
-                    ax.annotate(f'{values[-1]:.2f}',
-                                (timestamps[-1],
-                                 values[-1] if index in ['Total_Market_Cap', 'Market_Cap_Change_24h'] else
-                                 normalized_values[-1]),
-                                textcoords="offset points",
-                                xytext=(0, 5),
-                                ha='center',
-                                fontsize=8,
-                                color=color)
-            else:
-                print(f"No data available for {index}")
-
-        ax.legend(index_lines.values(), index_lines.keys(), loc='upper left')
-        ax.set_xlabel('Время')
-        ax.set_ylabel('Значение / Процентное изменение')
-        ax.set_title('Изменение индексов')
-        ax.grid(True)
-
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-        ax.xaxis.set_major_locator(mdates.HourLocator(interval=1))
-        plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
-
-        buf = BytesIO()
-        plt.savefig(buf, format='png', dpi=self.dpi)
-        buf.seek(0)
-        plt.close(fig)
-
-        return buf, 'Изменение индексов #indexes'
 
     async def send_message(self, message: str, max_retries=3):
         for attempt in range(max_retries):
@@ -552,28 +363,29 @@ class CryptoAnalyzer:
                 logger.error(f"Telegram error occurred: {e}")
                 return
 
-    async def run(self, interval: int = 300):
-        while True:
-            try:
-                await self.update_prices()
-                await asyncio.sleep(interval)
-            except Exception as e:
-                logger.error(f"An error occurred in run: {e}")
-                await asyncio.sleep(10)  # Ждем 10 секунд перед повторной попыткой в случае ошибки
+    def choose_sticker(self, all_data):
+        # Простая логика выбора стикера на основе изменения цены
+        total_change = 0
+        for symbol, data in all_data.items():
+            if len(data) >= 2:
+                change = (data[-1]['last_price'] - data[0]['last_price']) / data[0]['last_price']
+                total_change += change
 
-    async def send_sticker(self, sticker_id: str, max_retries=3):
-        for attempt in range(max_retries):
-            try:
-                await self.bot.send_sticker(chat_id=self.chat_id, sticker=sticker_id)
-                return
-            except TimedOut:
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
-                else:
-                    logger.error(f"Не удалось отправить стике после {max_retries} попыток из-за таймаута")
-            except TelegramError as e:
-                logger.error(f"Произошла ошибка Telegram: {e}")
-                return
+        if total_change > 0:
+            return random.choice(self.stickers['positive'])
+        else:
+            return random.choice(self.stickers['negative'])
+
+    async def send_sticker(self, sticker_id):
+        try:
+            await self.bot.send_sticker(chat_id=self.chat_id, sticker=sticker_id)
+        except Exception as e:
+            logger.error(f"Ошибка при отправке стикера: {e}")
+
+    async def run(self):
+        while True:
+            await self.update_prices()
+            await asyncio.sleep(min(self.intervals.values()))  # Ждем минимальный интервал перед следующим обновлением
 
 
 async def main():
@@ -581,17 +393,14 @@ async def main():
         config = json.load(config_file)
 
     analyzer = CryptoAnalyzer(
-        exchange_name=config['exchange_name'],
         symbols=config['symbols'],
         telegram=config['telegram'],
-        db_config=config['db'],
-        interval=config['update_interval'],
+        intervals=config['intervals'],
         stickers=config['stickers'],
-        is_indexes=config['is_indexes'],
+        tickers_api_url=config['tickers_api_url']
     )
 
-    await analyzer.run(interval=config['update_interval'])
-
+    await analyzer.run()
 
 if __name__ == "__main__":
     asyncio.run(main())

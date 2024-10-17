@@ -1,6 +1,6 @@
 {
     "environment": "local",
-    "exchange_name": "binance",
+    "tickers_api_url": "http://37.143.9.19:8080",
     "symbols": [
         {
             "name": "BTC/USDT",
@@ -28,13 +28,10 @@
             "line_width": 1
         }
     ],
-    "update_interval": 60,
-    "is_indexes": true,
-    "db": {
-        "host": "localhost",
-        "database": "price_notifier",
-        "user": "price_notifier_user",
-        "password": "e4HG3KF2S3f3_fd"
+    "intervals": {
+        "1m": 60,
+        "3m": 180,
+        "1h": 3600
     },
     "telegram": {
         "webhook_url": "",
