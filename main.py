@@ -458,6 +458,44 @@ class CryptoAnalyzer:
 
         plt.tight_layout(rect=[0, 0.03, 1, 0.97])
 
+        # Добавляем линию доминации ETH/BTC на график цен
+        if 'ETH/USDT' in self.prices and 'BTC/USDT' in self.prices:
+            eth_prices = np.array(self.prices['ETH/USDT'])
+            btc_prices = np.array(self.prices['BTC/USDT'])
+
+            # Вычисляем относительную силу ETH к BTC
+            eth_normalized = (eth_prices - eth_prices[0]) / eth_prices[0] * 100
+            btc_normalized = (btc_prices - btc_prices[0]) / btc_prices[0] * 100
+            dominance = eth_normalized - btc_normalized
+
+            # Добавляем линию доминации на график цен
+            dom_line, = ax1.plot(self.timestamps, dominance, color='purple',
+                                label='ETH/BTC Доминация', linewidth=1.5,
+                                linestyle='--', alpha=0.8)
+
+            # Добавляем аннотации для значимых точек доминации
+            for j, (timestamp, dom) in enumerate(zip(self.timestamps, dominance)):
+                if j % annotation_interval == 0 or j == len(dominance) - 1:
+                    ax1.annotate(f'D:{dom:.1f}%',
+                                xy=(timestamp, dom),
+                                xytext=(0, -10), textcoords='offset points',
+                                ha='center', va='top', color='purple',
+                                fontsize=8, rotation=45)
+
+            # Добавляем индикатор текущей доминации в легенду
+            if dominance[-1] > 0:
+                dom_status = f'ETH/BTC: +{dominance[-1]:.1f}% (ETH сильнее)'
+            else:
+                dom_status = f'ETH/BTC: {dominance[-1]:.1f}% (BTC сильнее)'
+
+            # Обновляем списки для легенды
+            price_lines.append(dom_line)
+            price_labels.append(dom_status)
+
+        # Обновляем легенду с новыми элементами
+        ax1.legend(price_lines, price_labels, loc='upper left', fontsize=8)
+
+        # Перемещаем код сохранения графика в конец
         if not os.path.exists('render'):
             os.makedirs('render')
 
