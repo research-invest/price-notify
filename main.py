@@ -331,9 +331,9 @@ class CryptoAnalyzer:
         plt.close()
 
         # Добавляем линию доминации ETH/BTC на график цен
-        if 'ETHUSDT' in self.prices and 'BTCUSDT' in self.prices:
-            eth_prices = np.array(self.prices['ETHUSDT'])
-            btc_prices = np.array(self.prices['BTCUSDT'])
+        if 'ETH/USDT' in self.prices and 'ETH/USDT' in self.prices:
+            eth_prices = np.array(self.prices['ETH/USDT'])
+            btc_prices = np.array(self.prices['BTC/USDT'])
             
             # Вычисляем относительную силу ETH к BTC
             eth_normalized = (eth_prices - eth_prices[0]) / eth_prices[0] * 100
