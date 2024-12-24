@@ -291,7 +291,7 @@ class CryptoAnalyzer:
                                  ha='center', va='bottom', color=color,
                                  fontsize=8, rotation=45)
 
-        # Добавляем линии регрессии и аппроксимации в легенду только один раз
+        # Добавляем линии регрессии и аппроксимации в лег��нду только один раз
         price_lines.extend([ax1.plot([], [], color='gray', linestyle='--', linewidth=1.5)[0],
                             ax1.plot([], [], color='gray', linestyle=':', linewidth=1)[0]])
         price_labels.extend(['Линейная регрессия', 'Полиномиальная аппроксимация'])
@@ -321,17 +321,8 @@ class CryptoAnalyzer:
 
         plt.tight_layout(rect=[0, 0.03, 1, 0.97])
 
-        if not os.path.exists('render'):
-            os.makedirs('render')
-
-        buf = BytesIO()
-        plt.savefig(buf, format='png', dpi=self.dpi)
-        plt.savefig('render/graph.png', format='png', dpi=self.dpi)
-        buf.seek(0)
-        plt.close()
-
         # Добавляем линию доминации ETH/BTC на график цен
-        if 'ETH/USDT' in self.prices and 'ETH/USDT' in self.prices:
+        if 'ETH/USDT' in self.prices and 'BTC/USDT' in self.prices:
             eth_prices = np.array(self.prices['ETH/USDT'])
             btc_prices = np.array(self.prices['BTC/USDT'])
             
@@ -366,6 +357,16 @@ class CryptoAnalyzer:
 
         # Обновляем легенду с новыми элементами
         ax1.legend(price_lines, price_labels, loc='upper left', fontsize=8)
+
+        # Перемещаем код сохранения графика в конец
+        if not os.path.exists('render'):
+            os.makedirs('render')
+
+        buf = BytesIO()
+        plt.savefig(buf, format='png', dpi=self.dpi)
+        plt.savefig('render/graph.png', format='png', dpi=self.dpi)
+        buf.seek(0)
+        plt.close()
 
         return buf, caption
 
