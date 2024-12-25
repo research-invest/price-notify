@@ -59,6 +59,11 @@ class CryptoAnalyzer:
         self.last_indices_update = datetime.now(timezone)
         self.stickers = stickers
         self.is_indexes = is_indexes
+        self.trading_sessions = {
+            'Азиатская': {'start': 0, 'end': 8, 'color': 'gray'},    # 00:00-08:00 UTC
+            'Лондонская': {'start': 8, 'end': 16, 'color': 'gray'},  # 08:00-16:00 UTC
+            'Нью-Йоркская': {'start': 13, 'end': 21, 'color': 'gray'} # 13:00-21:00 UTC
+        }
 
     def load_historical_data(self):
         end_date = datetime.now(timezone)
@@ -206,11 +211,11 @@ class CryptoAnalyzer:
             if self.is_indexes:
                 message += f"S&P 500: {latest_sp500:.2f}\n\n"
 
-            if len(self.timestamps) > 100:
-                self.timestamps = self.timestamps[-100:]
+            if len(self.timestamps) > 300:
+                self.timestamps = self.timestamps[-300:]
                 for symbol in self.symbols:
-                    self.prices[symbol] = self.prices[symbol][-100:]
-                    self.volumes[symbol] = self.volumes[symbol][-100:]
+                    self.prices[symbol] = self.prices[symbol][-300:]
+                    self.volumes[symbol] = self.volumes[symbol][-300:]
 
             await self.send_message(message)
 
@@ -504,6 +509,32 @@ class CryptoAnalyzer:
         plt.savefig('render/graph.png', format='png', dpi=self.dpi)
         buf.seek(0)
         plt.close()
+
+        # Добавляем вертикальные линии для торговых сессий
+        current_date = datetime.now(timezone).date()
+        for session_name, session_info in self.trading_sessions.items():
+            start_hour = session_info['start']
+            end_hour = session_info['end']
+            
+            # Создаем метки времени для начала и конца сессии
+            session_start = datetime.combine(current_date, 
+                                           datetime.min.time().replace(hour=start_hour),
+                                           timezone)
+            session_end = datetime.combine(current_date, 
+                                         datetime.min.time().replace(hour=end_hour),
+                                         timezone)
+            
+            # Добавляем вертикальные линии на оба графика
+            for ax in [ax1, ax2]:
+                ax.axvline(x=session_start, color=session_info['color'], 
+                          linestyle=':', alpha=0.5, linewidth=1)
+                ax.axvline(x=session_end, color=session_info['color'], 
+                          linestyle=':', alpha=0.5, linewidth=1)
+                
+                # Добавляем метки сессий
+                ax.text(session_start, ax.get_ylim()[1], f'{session_name}',
+                       rotation=90, va='top', ha='right', fontsize=8,
+                       color=session_info['color'])
 
         return buf, caption
 
