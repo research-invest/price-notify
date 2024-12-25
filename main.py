@@ -505,10 +505,17 @@ class CryptoAnalyzer:
             os.makedirs('render')
 
         # Добавляем вертикальные линии для торговых сессий
-        current_date = datetime.now(timezone).date()
+        current_time = datetime.now(timezone)
+        current_date = current_time.date()
+        current_hour = current_time.hour
+
         for session_name, session_info in self.trading_sessions.items():
             start_hour = session_info['start']
             end_hour = session_info['end']
+            
+            # Пропускаем сессии, которые уже закончились
+            if end_hour < current_hour:
+                continue
             
             # Создаем метки времени для начала и конца сессии
             session_start = datetime.combine(current_date, 
@@ -517,6 +524,10 @@ class CryptoAnalyzer:
             session_end = datetime.combine(current_date, 
                                          datetime.min.time().replace(hour=end_hour),
                                          timezone)
+            
+            # Если сессия уже началась, используем текущее время как начало
+            if start_hour < current_hour < end_hour:
+                session_start = current_time
             
             # Добавляем вертикальные линии на оба графика
             for ax in [ax1, ax2]:
