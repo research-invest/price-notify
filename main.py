@@ -33,6 +33,7 @@ class CryptoAnalyzer:
     def __init__(self, exchange_name: str, symbols: list, telegram: dict, db_config: dict, interval: int,
                  stickers: dict, is_indexes: bool):
         self.dpi = 140
+        self.timestamps_limit = 300
         self.cg = CoinGeckoAPI()
         self.indices = {
             'SP500': {'values': [], 'timestamps': []},
@@ -211,11 +212,11 @@ class CryptoAnalyzer:
             if self.is_indexes:
                 message += f"S&P 500: {latest_sp500:.2f}\n\n"
 
-            if len(self.timestamps) > 300:
-                self.timestamps = self.timestamps[-300:]
+            if len(self.timestamps) > self.timestamps_limit:
+                self.timestamps = self.timestamps[-self.timestamps_limit:]
                 for symbol in self.symbols:
-                    self.prices[symbol] = self.prices[symbol][-300:]
-                    self.volumes[symbol] = self.volumes[symbol][-300:]
+                    self.prices[symbol] = self.prices[symbol][-self.timestamps_limit:]
+                    self.volumes[symbol] = self.volumes[symbol][-self.timestamps_limit:]
 
             await self.send_message(message)
 
