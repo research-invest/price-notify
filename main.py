@@ -504,12 +504,6 @@ class CryptoAnalyzer:
         if not os.path.exists('render'):
             os.makedirs('render')
 
-        buf = BytesIO()
-        plt.savefig(buf, format='png', dpi=self.dpi)
-        plt.savefig('render/graph.png', format='png', dpi=self.dpi)
-        buf.seek(0)
-        plt.close()
-
         # Добавляем вертикальные линии для торговых сессий
         current_date = datetime.now(timezone).date()
         for session_name, session_info in self.trading_sessions.items():
@@ -535,6 +529,12 @@ class CryptoAnalyzer:
                 ax.text(session_start, ax.get_ylim()[1], f'{session_name}',
                        rotation=90, va='top', ha='right', fontsize=8,
                        color=session_info['color'])
+
+        buf = BytesIO()
+        plt.savefig(buf, format='png', dpi=self.dpi)
+        plt.savefig('render/graph.png', format='png', dpi=self.dpi)
+        buf.seek(0)
+        plt.close()
 
         return buf, caption
 
