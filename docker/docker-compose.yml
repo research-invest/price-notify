@@ -2,7 +2,7 @@ version: '3'
 services:
   mysql:
     container_name: price-notifier-mysql
-    image: mysql:latest
+    image: mysql:8.0.35
     volumes:
       - ./data/mysql/:/var/lib/mysql
     environment:

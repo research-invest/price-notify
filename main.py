@@ -510,15 +510,43 @@ class CryptoAnalyzer:
         current_date = current_time.date()
         current_hour = current_time.hour
 
-        for session_name, session_info in self.trading_sessions.items():
+        # Находим текущую и следующую сессии
+        current_session = None
+        next_session = None
+
+        # Сортируем сессии по времени начала
+        sorted_sessions = sorted(self.trading_sessions.items(), key=lambda x: x[1]['start'])
+        
+        # Определяем текущую и следующую сессии
+        for i, (session_name, session_info) in enumerate(sorted_sessions):
             start_hour = session_info['start']
             end_hour = session_info['end']
             
-            # Пропускаем сессии, которые уже закончились
-            if end_hour < current_hour:
-                continue
+            # Проверяем, находимся ли мы в текущей сессии
+            if start_hour <= current_hour < end_hour:
+                current_session = (session_name, session_info)
+                # Следующая сессия - это следующая по списку (с учетом перехода через сутки)
+                next_session = sorted_sessions[(i + 1) % len(sorted_sessions)]
+                break
+            # Если мы не в сессии, то следующая - это первая, которая еще не началась
+            elif current_hour < start_hour:
+                next_session = (session_name, session_info)
+                break
+
+        # Если мы не нашли текущую сессию, значит мы между сессиями
+        # В этом случае показываем только следующую
+
+        sessions_to_show = []
+        if current_session:
+            sessions_to_show.append(current_session)
+        if next_session:
+            sessions_to_show.append(next_session)
+
+        # Отрисовываем выбранные сессии
+        for session_name, session_info in sessions_to_show:
+            start_hour = session_info['start']
+            end_hour = session_info['end']
             
-            # Создаем метки времени для начала и конца сессии
             session_start = datetime.combine(current_date, 
                                            datetime.min.time().replace(hour=start_hour),
                                            timezone)
@@ -526,8 +554,8 @@ class CryptoAnalyzer:
                                          datetime.min.time().replace(hour=end_hour),
                                          timezone)
             
-            # Если сессия уже началась, используем текущее время как начало
-            if start_hour < current_hour < end_hour:
+            # Если это текущая сессия и она уже началась, используем текущее время
+            if current_session and session_name == current_session[0] and start_hour <= current_hour:
                 session_start = current_time
             
             # Добавляем вертикальные линии на оба графика
