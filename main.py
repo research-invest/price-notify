@@ -501,14 +501,14 @@ class CryptoAnalyzer:
         # Обновляем легенду с новыми элементами
         ax1.legend(price_lines, price_labels, loc='upper left', fontsize=8)
 
-        # Перемещаем код сохранения графика в конец
-        if not os.path.exists('render'):
-            os.makedirs('render')
-
-        # Добавляем вертикальные линии для торговых сессий
+        # Устанавливаем фиксированные пределы времени
         current_time = datetime.now(timezone)
-        current_date = current_time.date()
-        current_hour = current_time.hour
+        start_time = current_time - timedelta(hours=2)  # Показываем 2 часа истории
+        end_time = current_time + timedelta(hours=6)    # Показываем 6 часов вперед
+
+        # Устанавливаем пределы для обоих графиков
+        # for ax in [ax1, ax2]:
+        #     ax.set_xlim(start_time, end_time)
 
         # Находим текущую и следующую сессии
         current_session = None
@@ -523,18 +523,15 @@ class CryptoAnalyzer:
             end_hour = session_info['end']
             
             # Проверяем, находимся ли мы в текущей сессии
-            if start_hour <= current_hour < end_hour:
+            if start_hour <= current_time.hour < end_hour:
                 current_session = (session_name, session_info)
                 # Следующая сессия - это следующая по списку (с учетом перехода через сутки)
                 next_session = sorted_sessions[(i + 1) % len(sorted_sessions)]
                 break
             # Если мы не в сессии, то следующая - это первая, которая еще не началась
-            elif current_hour < start_hour:
+            elif current_time.hour < start_hour:
                 next_session = (session_name, session_info)
                 break
-
-        # Если мы не нашли текущую сессию, значит мы между сессиями
-        # В этом случае показываем только следующую
 
         sessions_to_show = []
         if current_session:
@@ -547,28 +544,35 @@ class CryptoAnalyzer:
             start_hour = session_info['start']
             end_hour = session_info['end']
             
-            session_start = datetime.combine(current_date, 
+            session_start = datetime.combine(current_time.date(), 
                                            datetime.min.time().replace(hour=start_hour),
                                            timezone)
-            session_end = datetime.combine(current_date, 
+            session_end = datetime.combine(current_time.date(), 
                                          datetime.min.time().replace(hour=end_hour),
                                          timezone)
             
+            # Если сессия переходит через полночь
+            if end_hour < start_hour:
+                if current_time.hour >= start_hour:
+                    session_end = session_end + timedelta(days=1)
+                else:
+                    session_start = session_start - timedelta(days=1)
+            
             # Если это текущая сессия и она уже началась, используем текущее время
-            if current_session and session_name == current_session[0] and start_hour <= current_hour:
+            if current_session and session_name == current_session[0] and start_hour <= current_time.hour:
                 session_start = current_time
             
             # Добавляем вертикальные линии на оба графика
-            for ax in [ax1, ax2]:
-                ax.axvline(x=session_start, color=session_info['color'], 
-                          linestyle=':', alpha=0.5, linewidth=1)
-                ax.axvline(x=session_end, color=session_info['color'], 
-                          linestyle=':', alpha=0.5, linewidth=1)
-                
-                # Добавляем метки сессий
-                ax.text(session_start, ax.get_ylim()[1], f'{session_name}',
-                       rotation=90, va='top', ha='right', fontsize=8,
-                       color=session_info['color'])
+            # for ax in [ax1, ax2]:
+            #     ax.axvline(x=session_start, color=session_info['color'],
+            #               linestyle=':', alpha=0.5, linewidth=1)
+            #     ax.axvline(x=session_end, color=session_info['color'],
+            #               linestyle=':', alpha=0.5, linewidth=1)
+            #
+            #     # Добавляем метки сессий
+            #     ax.text(session_start, ax.get_ylim()[1], f'{session_name}',
+            #            rotation=90, va='top', ha='right', fontsize=8,
+            #            color=session_info['color'])
 
         buf = BytesIO()
         plt.savefig(buf, format='png', dpi=self.dpi)
