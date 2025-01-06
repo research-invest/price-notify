@@ -26,14 +26,15 @@ from scipy.optimize import curve_fit
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-timezone = ZoneInfo("Europe/Moscow")
+# timezone = ZoneInfo("Europe/Moscow")
+timezone = ZoneInfo("UTC")
 
 
 class CryptoAnalyzer:
     def __init__(self, exchange_name: str, symbols: list, telegram: dict, db_config: dict, interval: int,
-                 stickers: dict, is_indexes: bool):
+                 stickers: dict, is_indexes: bool, timestamps_limit: int):
         self.dpi = 140
-        self.timestamps_limit = 300
+        self.timestamps_limit = timestamps_limit
         self.cg = CoinGeckoAPI()
         self.indices = {
             'SP500': {'values': [], 'timestamps': []},
@@ -501,78 +502,63 @@ class CryptoAnalyzer:
         # Обновляем легенду с новыми элементами
         ax1.legend(price_lines, price_labels, loc='upper left', fontsize=8)
 
-        # Устанавливаем фиксированные пределы времени
-        current_time = datetime.now(timezone)
-        start_time = current_time - timedelta(hours=2)  # Показываем 2 часа истории
-        end_time = current_time + timedelta(hours=6)    # Показываем 6 часов вперед
-
-        # Устанавливаем пределы для обоих графиков
-        # for ax in [ax1, ax2]:
-        #     ax.set_xlim(start_time, end_time)
-
-        # Находим текущую и следующую сессии
-        current_session = None
-        next_session = None
-
-        # Сортируем сессии по времени начала
-        sorted_sessions = sorted(self.trading_sessions.items(), key=lambda x: x[1]['start'])
-        
-        # Определяем текущую и следующую сессии
-        for i, (session_name, session_info) in enumerate(sorted_sessions):
-            start_hour = session_info['start']
-            end_hour = session_info['end']
+        # Находим фактический диапазон данных для графика
+        if len(self.timestamps) > 0:
+            data_start = self.timestamps[0]
+            data_end = self.timestamps[-1]
+            time_range = data_end - data_start
             
-            # Проверяем, находимся ли мы в текущей сессии
-            if start_hour <= current_time.hour < end_hour:
-                current_session = (session_name, session_info)
-                # Следующая сессия - это следующая по списку (с учетом перехода через сутки)
-                next_session = sorted_sessions[(i + 1) % len(sorted_sessions)]
-                break
-            # Если мы не в сессии, то следующая - это первая, которая еще не началась
-            elif current_time.hour < start_hour:
-                next_session = (session_name, session_info)
-                break
+            # Добавляем небольшой запас (10% от диапазона) с обеих сторон
+            padding = time_range * 0.1
+            plot_start = (data_start - padding).replace(tzinfo=timezone)
+            plot_end = (data_end + padding).replace(tzinfo=timezone)
 
-        sessions_to_show = []
-        if current_session:
-            sessions_to_show.append(current_session)
-        if next_session:
-            sessions_to_show.append(next_session)
+            # Устанавливаем пределы для обоих графиков
+            for ax in [ax1, ax2]:
+                ax.set_xlim(plot_start, plot_end)
 
-        # Отрисовываем выбранные сессии
-        for session_name, session_info in sessions_to_show:
-            start_hour = session_info['start']
-            end_hour = session_info['end']
-            
-            session_start = datetime.combine(current_time.date(), 
-                                           datetime.min.time().replace(hour=start_hour),
-                                           timezone)
-            session_end = datetime.combine(current_time.date(), 
-                                         datetime.min.time().replace(hour=end_hour),
-                                         timezone)
-            
-            # Если сессия переходит через полночь
-            if end_hour < start_hour:
-                if current_time.hour >= start_hour:
-                    session_end = session_end + timedelta(days=1)
-                else:
-                    session_start = session_start - timedelta(days=1)
-            
-            # Если это текущая сессия и она уже началась, используем текущее время
-            if current_session and session_name == current_session[0] and start_hour <= current_time.hour:
-                session_start = current_time
-            
-            # Добавляем вертикальные линии на оба графика
-            # for ax in [ax1, ax2]:
-            #     ax.axvline(x=session_start, color=session_info['color'],
-            #               linestyle=':', alpha=0.5, linewidth=1)
-            #     ax.axvline(x=session_end, color=session_info['color'],
-            #               linestyle=':', alpha=0.5, linewidth=1)
-            #
-            #     # Добавляем метки сессий
-            #     ax.text(session_start, ax.get_ylim()[1], f'{session_name}',
-            #            rotation=90, va='top', ha='right', fontsize=8,
-            #            color=session_info['color'])
+            # Проверяем каждую торговую сессию
+            for session_name, session_info in self.trading_sessions.items():
+                start_hour = session_info['start']
+                end_hour = session_info['end']
+                
+                # Получаем время начала и конца сессии для текущего дня
+                current_date = data_start.date()
+                session_start = datetime.combine(current_date, 
+                                              datetime.min.time().replace(hour=start_hour),
+                                              tzinfo=timezone)
+                session_end = datetime.combine(current_date, 
+                                             datetime.min.time().replace(hour=end_hour),
+                                             tzinfo=timezone)
+
+                # Если сессия переходит через полночь
+                if end_hour < start_hour:
+                    session_end += timedelta(days=1)
+
+                # Проверяем, пересекается ли сессия с диапазоном графика
+                if ((session_start <= plot_end and session_end >= plot_start) or
+                    (session_start <= plot_end and session_start >= plot_start) or
+                    (session_end <= plot_end and session_end >= plot_start)):
+                    
+                    # Отрисовываем границы сессии
+                    for ax in [ax1, ax2]:
+                        # Начало сессии
+                        if plot_start <= session_start <= plot_end:
+                            ax.axvline(x=session_start, color=session_info['color'], 
+                                     linestyle=':', alpha=0.5, linewidth=1)
+                            ax.text(session_start, ax.get_ylim()[1], 
+                                   f'{session_name} старт',
+                                   rotation=90, va='top', ha='right', 
+                                   fontsize=8, color=session_info['color'])
+                        
+                        # Конец сессии
+                        if plot_start <= session_end <= plot_end:
+                            ax.axvline(x=session_end, color=session_info['color'], 
+                                     linestyle=':', alpha=0.5, linewidth=1)
+                            ax.text(session_end, ax.get_ylim()[1], 
+                                   f'{session_name} конец',
+                                   rotation=90, va='top', ha='right', 
+                                   fontsize=8, color=session_info['color'])
 
         buf = BytesIO()
         plt.savefig(buf, format='png', dpi=self.dpi)
@@ -701,6 +687,7 @@ async def main():
         interval=config['update_interval'],
         stickers=config['stickers'],
         is_indexes=config['is_indexes'],
+        timestamps_limit=config['timestamps_limit'],
     )
 
     await analyzer.run(interval=config['update_interval'])
