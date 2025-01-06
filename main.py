@@ -22,6 +22,7 @@ import matplotlib.dates as mdates
 import random
 from scipy import stats
 from scipy.optimize import curve_fit
+from scipy.optimize import OptimizeWarning
 
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -344,6 +345,32 @@ class CryptoAnalyzer:
                         ha='left',
                         va='center')
 
+        # Функция для полиномиальной аппроксимации с проверками
+        def safe_curve_fit(x_scaled, y_data):
+            try:
+                # Проверяем, достаточно ли точек для аппроксимации
+                if len(x_scaled) < 4:  # Минимум точек для квадратичной функции
+                    return None
+                    
+                # Проверяем на наличие NaN или inf
+                if np.any(np.isnan(y_data)) or np.any(np.isinf(y_data)):
+                    return None
+                    
+                # Добавляем начальное приближение и границы параметров
+                p0 = [0, 0, np.mean(y_data)]  # Начальное приближение
+                bounds = ([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, np.inf])
+                
+                # Увеличиваем максимальное число итераций и добавляем метод
+                popt, _ = curve_fit(poly_func, x_scaled, y_data, 
+                                   p0=p0, 
+                                   bounds=bounds,
+                                   maxfev=10000,  # Увеличиваем число итераций
+                                   method='trf')  # Используем более надежный метод
+                return popt
+            except (RuntimeError, OptimizeWarning) as e:
+                logger.debug(f"Не удалось выполнить полиномиальную аппроксимацию: {e}")
+                return None
+
         for symbol in self.symbols:
             if len(self.prices[symbol]) != len(self.timestamps):
                 logger.warning(f"Несоответствие данных для {symbol}. Пропуск построения графика.")
@@ -376,16 +403,17 @@ class CryptoAnalyzer:
 
             # Добавляем полиномиальную аппроксимацию для цен
             try:
-                popt, _ = curve_fit(poly_func, x_scaled, normalized_prices)
-                x_line = np.linspace(0, 1, 100)
-                y_line = poly_func(x_line, *popt)
-                approx_line, = ax1.plot(mdates.num2date(x[0] + x_line * (x[-1] - x[0])), y_line, color=color,
-                                        linestyle=':', linewidth=2, alpha=alpha)
-                # Вычисляем наклон в последней точке полиномиальной аппроксимации
-                poly_slope = 2 * popt[0] * x_line[-1] + popt[1]
-                add_slope_annotation(ax1, x, y_line, poly_slope, color)
+                popt = safe_curve_fit(x_scaled, normalized_prices)
+                if popt is not None:
+                    x_line = np.linspace(0, 1, 100)
+                    y_line = poly_func(x_line, *popt)
+                    approx_line, = ax1.plot(mdates.num2date(x[0] + x_line * (x[-1] - x[0])), y_line, color=color,
+                                            linestyle=':', linewidth=2, alpha=alpha)
+                    # Вычисляем наклон в последней точке полиномиальной аппроксимации
+                    poly_slope = 2 * popt[0] * x_line[-1] + popt[1]
+                    add_slope_annotation(ax1, x, y_line, poly_slope, color)
             except Exception as e:
-                print(f"Ошибка при расчете полиномиальной аппроксимации для {symbol} (цены): {e}")
+                logger.debug(f"Ошибка при расчете полиномиальной аппроксимации для {symbol} (цены): {e}")
                 approx_line = None
 
             # Аннотации для цен
@@ -416,15 +444,17 @@ class CryptoAnalyzer:
 
             # Добавляем полиномиальную аппроксимацию для объемов
             try:
-                popt, _ = curve_fit(poly_func, x_scaled, normalized_volumes)
-                y_line = poly_func(x_line, *popt)
-                ax2.plot(mdates.num2date(x[0] + x_line * (x[-1] - x[0])), y_line, color=color, linestyle=':',
-                         linewidth=2, alpha=alpha)
-                # Вычисляем наклон в последней точке полиномиальной аппроксимации
-                poly_slope = 2 * popt[0] * x_line[-1] + popt[1]
-                add_slope_annotation(ax2, x, y_line, poly_slope, color)
+                popt = safe_curve_fit(x_scaled, normalized_volumes)
+                if popt is not None:
+                    x_line = np.linspace(0, 1, 100)
+                    y_line = poly_func(x_line, *popt)
+                    ax2.plot(mdates.num2date(x[0] + x_line * (x[-1] - x[0])), y_line, 
+                            color=color, linestyle=':', linewidth=2, alpha=alpha)
+                    # Вычисляем наклон в последней точке полиномиальной аппроксимации
+                    poly_slope = 2 * popt[0] * x_line[-1] + popt[1]
+                    add_slope_annotation(ax2, x, y_line, poly_slope, color)
             except Exception as e:
-                print(f"Ошибка при расчете полиномиальной аппроксимации для {symbol} (объемы): {e}")
+                logger.debug(f"Ошибка при расчете полиномиальной аппроксимации для {symbol} (объемы): {e}")
 
             # Аннотации для объемов
             for j, (timestamp, norm_volume, volume) in enumerate(zip(self.timestamps, normalized_volumes, volumes)):
