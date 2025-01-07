@@ -590,6 +590,9 @@ class CryptoAnalyzer:
                                    rotation=90, va='top', ha='right', 
                                    fontsize=8, color=session_info['color'])
 
+        if not os.path.exists('render'):
+            os.makedirs('render')
+
         buf = BytesIO()
         plt.savefig(buf, format='png', dpi=self.dpi)
         plt.savefig('render/graph.png', format='png', dpi=self.dpi)
