@@ -46,7 +46,7 @@ user=root
 supervisorctl reread
 supervisorctl update
 supervisorctl restart all
-
+supervisorctl stop all
 
 # Проверить статус
 supervisorctl status crypto_analyzer
