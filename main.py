@@ -623,8 +623,8 @@ class CryptoAnalyzer:
 
         finally:
             # Логируем время создания графика
-            execution_time = time.time() - start_time
-            logger.info(f"Chart creation time: {execution_time:.2f} seconds")
+            #execution_time = time.time() - start_time
+            logger.info(f"Chart creation time:  seconds")
 
     def create_indices_chart(self):
         start_time = time.time()
