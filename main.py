@@ -500,24 +500,24 @@ class CryptoAnalyzer:
 
             # Добавляем линию доминации ETH/BTC на график цен
             if 'ETH/USDT' in self.prices and 'BTC/USDT' in self.prices:
-                eth_prices = np.array([p for p in self.prices['ETH/USDT'] if p is not None])
-                btc_prices = np.array([p for p in self.prices['BTC/USDT'] if p is not None])
+                # Получаем только те индексы, где есть данные для обеих монет
+                valid_indices = [i for i, (eth, btc) in enumerate(zip(self.prices['ETH/USDT'], self.prices['BTC/USDT']))
+                               if eth is not None and btc is not None]
                 
-                # Проверяем, есть ли достаточно данных для построения графика
-                if len(eth_prices) > 0 and len(btc_prices) > 0:
-                    # Вычисляем относительную силу ETH к BTC
-                    eth_normalized = (eth_prices - eth_prices[0]) / eth_prices[0] * 100
-                    btc_normalized = (btc_prices - btc_prices[0]) / btc_prices[0] * 100
-                    dominance = eth_normalized - btc_normalized
+                if valid_indices:
+                    # Создаем массивы только с валидными данными
+                    eth_prices = np.array([self.prices['ETH/USDT'][i] for i in valid_indices])
+                    btc_prices = np.array([self.prices['BTC/USDT'][i] for i in valid_indices])
+                    valid_timestamps = [self.timestamps[i] for i in valid_indices]
+                    
+                    # Проверяем, есть ли достаточно данных
+                    if len(eth_prices) > 0 and len(btc_prices) > 0:
+                        # Вычисляем нормализованные значения
+                        eth_normalized = (eth_prices - eth_prices[0]) / eth_prices[0] * 100
+                        btc_normalized = (btc_prices - btc_prices[0]) / btc_prices[0] * 100
+                        dominance = eth_normalized - btc_normalized
 
-                    # Получаем временные метки только для валидных значений
-                    valid_timestamps = [t for i, t in enumerate(self.timestamps) 
-                                      if i < len(self.prices['ETH/USDT']) 
-                                      and self.prices['ETH/USDT'][i] is not None 
-                                      and self.prices['BTC/USDT'][i] is not None]
-
-                    if len(valid_timestamps) == len(dominance):
-                        # Добавляем линию доминации на график цен
+                        # Теперь у нас гарантированно одинаковая длина массивов
                         dom_line, = ax1.plot(valid_timestamps, dominance, color='purple',
                                            label='ETH/BTC Доминация', linewidth=1.5,
                                            linestyle='--', alpha=0.8)
