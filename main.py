@@ -35,7 +35,7 @@ timezone = ZoneInfo("Europe/Moscow")
 class CryptoAnalyzer:
     def __init__(self, exchange_name: str, symbols: list, telegram: dict, db_config: dict, interval: int,
                  stickers: dict, is_indexes: bool, timestamps_limit: int):
-        self.dpi = 100
+        self.dpi = 150
         self.timestamps_limit = timestamps_limit
         self.cg = CoinGeckoAPI()
         self.indices = {
