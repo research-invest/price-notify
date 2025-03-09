@@ -31,9 +31,9 @@ timezone = ZoneInfo("Europe/Moscow")
 
 class CryptoAnalyzer:
     def __init__(self, exchange_name: str, symbols: list, telegram: dict, db_config: dict, interval: int,
-                 stickers: dict, is_indexes: bool):
-        self.dpi = 140
-        self.timestamps_limit = 300
+                 stickers: dict, is_indexes: bool, timestamps_limit: int):
+        self.dpi = 100
+        self.timestamps_limit = timestamps_limit
         self.cg = CoinGeckoAPI()
         self.indices = {
             'SP500': {'values': [], 'timestamps': []},
@@ -701,6 +701,7 @@ async def main():
         interval=config['update_interval'],
         stickers=config['stickers'],
         is_indexes=config['is_indexes'],
+        timestamps_limit=config['timestamps_limit'],
     )
 
     await analyzer.run(interval=config['update_interval'])
