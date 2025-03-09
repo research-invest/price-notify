@@ -397,6 +397,7 @@ class CryptoAnalyzer:
                             ha='left',
                             va='center')
 
+            # Сначала рисуем все обычные графики
             for symbol in self.symbols:
                 if len(self.prices[symbol]) != len(self.timestamps):
                     logger.warning(f"Несоответствие данных для {symbol}. Пропуск построения графика.")
@@ -518,48 +519,35 @@ class CryptoAnalyzer:
 
             plt.tight_layout(rect=[0, 0.03, 1, 0.97])
 
-            # Добавляем линию доминации ETH/BTC на график цен
+            # Отдельно добавляем линию доминации ETH/BTC
             if 'ETH/USDT' in self.prices and 'BTC/USDT' in self.prices:
                 # Получаем только те индексы, где есть данные для обеих монет
                 valid_indices = [i for i, (eth, btc) in enumerate(zip(self.prices['ETH/USDT'], self.prices['BTC/USDT']))
                                if eth is not None and btc is not None]
                 
                 if valid_indices:
-                    # Создаем массивы только с валидными данными
+                    # Создаем массивы только с валидными данными для доминации
                     eth_prices = np.array([self.prices['ETH/USDT'][i] for i in valid_indices])
                     btc_prices = np.array([self.prices['BTC/USDT'][i] for i in valid_indices])
                     valid_timestamps = [self.timestamps[i] for i in valid_indices]
                     
-                    # Проверяем, есть ли достаточно данных
-                    if len(eth_prices) > 0 and len(btc_prices) > 0:
-                        # Вычисляем нормализованные значения
-                        eth_normalized = (eth_prices - eth_prices[0]) / eth_prices[0] * 100
-                        btc_normalized = (btc_prices - btc_prices[0]) / btc_prices[0] * 100
-                        dominance = eth_normalized - btc_normalized
+                    # Вычисляем нормализованные значения для доминации
+                    eth_normalized = (eth_prices - eth_prices[0]) / eth_prices[0] * 100
+                    btc_normalized = (btc_prices - btc_prices[0]) / btc_prices[0] * 100
+                    dominance = eth_normalized - btc_normalized
 
-                        # Теперь у нас гарантированно одинаковая длина массивов
-                        dom_line, = ax1.plot(valid_timestamps, dominance, color='purple',
-                                           label='ETH/BTC Доминация', linewidth=1.5,
-                                           linestyle='--', alpha=0.8)
-
-                        # Добавляем аннотации для значимых точек доминации
-                        for j, (timestamp, dom) in enumerate(zip(valid_timestamps, dominance)):
-                            if j % annotation_interval == 0 or j == len(dominance) - 1:
-                                ax1.annotate(f'D:{dom:.1f}%',
-                                            xy=(timestamp, dom),
-                                            xytext=(0, -10), textcoords='offset points',
-                                            ha='center', va='top', color='purple',
-                                            fontsize=8, rotation=45)
-
-                        # Добавляем индикатор текущей доминации в легенду
-                        if dominance[-1] > 0:
-                            dom_status = f'ETH/BTC: +{dominance[-1]:.1f}% (ETH сильнее)'
-                        else:
-                            dom_status = f'ETH/BTC: {dominance[-1]:.1f}% (BTC сильнее)'
-
-                        # Обновляем списки для легенды
-                        price_lines.append(dom_line)
-                        price_labels.append(dom_status)
+                    # Добавляем линию доминации
+                    dom_line, = ax1.plot(valid_timestamps, dominance, color='purple',
+                                       label='ETH/BTC Доминация', linewidth=1.5,
+                                       linestyle='--', alpha=0.8)
+                    
+                    # Добавляем в легенду
+                    price_lines.append(dom_line)
+                    if dominance[-1] > 0:
+                        dom_status = f'ETH/BTC: +{dominance[-1]:.1f}% (ETH сильнее)'
+                    else:
+                        dom_status = f'ETH/BTC: {dominance[-1]:.1f}% (BTC сильнее)'
+                    price_labels.append(dom_status)
 
             # Обновляем легенду с новыми элементами
             ax1.legend(price_lines, price_labels, loc='upper left', fontsize=8)
