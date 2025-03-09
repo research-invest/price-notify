@@ -554,8 +554,8 @@ class CryptoAnalyzer:
 
             # Устанавливаем фиксированные пределы времени
             current_time = datetime.now(timezone)
-            start_time = current_time - timedelta(hours=2)  # Показываем 2 часа истории
-            end_time = current_time + timedelta(hours=6)    # Показываем 6 часов вперед
+            # start_time = current_time - timedelta(hours=2)  # Показываем 2 часа истории
+            # end_time = current_time + timedelta(hours=6)    # Показываем 6 часов вперед
 
             # Находим текущую и следующую сессии
             current_session = None
@@ -630,9 +630,11 @@ class CryptoAnalyzer:
             return buf, caption
 
         finally:
-            # Логируем время создания графика
-            #execution_time = time.time() - start_time
-            logger.info(f"Chart creation time:  seconds")
+            # Логируем время создания графика с форматированием до 2 знаков
+            execution_time = float(time.time()) - start_time
+            logger.info(f"Chart creation time: {execution_time:.2f} seconds")
+
+            plt.close()
 
     def create_indices_chart(self):
         start_time = time.time()
