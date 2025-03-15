@@ -88,7 +88,7 @@ class CryptoAnalyzer:
             'Лондонская': {'start': 8, 'end': 16, 'color': 'gray'},  # 08:00-16:00 UTC
             'Нью-Йоркская': {'start': 13, 'end': 21, 'color': 'gray'} # 13:00-21:00 UTC
         }
-        self.cpu_threshold = 70  # Порог загрузки CPU в процентах
+        self.cpu_threshold = 30  # Порог загрузки CPU в процентах
         self.performance_log_interval = 60  # Логировать производительность каждые 60 секунд
         self.last_performance_log = time.time()
 
