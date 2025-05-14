@@ -275,8 +275,9 @@ class CryptoAnalyzer:
 
             await self.send_message(message)
 
-            price_volume_chart = self.create_price_volume_chart()
-            await self.send_chart(price_volume_chart)
+            # Новый график: цены, объемы, OI, RCI
+            price_volume_oi_rci_chart = self.create_price_volume_oi_rci_chart()
+            await self.send_chart(price_volume_oi_rci_chart)
 
             # Отправляем график индексов раз в час
             current_time = datetime.now(timezone)
@@ -367,328 +368,88 @@ class CryptoAnalyzer:
             open_interest = None
         return ticker['last'], ticker['quoteVolume'], open_interest
 
-    def create_price_volume_chart(self):
+    def create_price_volume_oi_rci_chart(self):
         start_time = time.time()
-        
         try:
             if len(self.timestamps) < 2:
                 return None
 
-            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
+            fig, axes = plt.subplots(4, 1, figsize=(14, 16), sharex=True)  # 4 графика: цена, объем, OI, RCI
 
-            formatted_date_time = datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S")
-
-            caption = f"Анализ цен и объемов торгов за период {self.interval}s на {formatted_date_time} #{self.interval}"
-
-            fig.suptitle(caption, fontsize=18)
-
-            # Функция для полиномиальной аппроксимации
-            def poly_func(x, a, b, c):
-                return a * x ** 2 + b * x + c
-
-            # Интервал аннотаций
-            total_points = len(self.timestamps)
-            points_per_annotation = max(1, int(total_points / 10))
-            min_interval_seconds = 300
-            annotation_interval = max(points_per_annotation, int(min_interval_seconds / self.interval))
-
-            # Создаем пустые списки для хранения линий легенды
-            price_lines = []
-            volume_lines = []
-            price_labels = []
-            volume_labels = []
-
-            alpha = 0.35
-
-            def add_slope_annotation(ax, x, y, slope, color):
-                angle = math.degrees(math.atan(slope))
-                ax.annotate(f'{angle:.1f}°',
-                            xy=(x[-1], y[-1]),
-                            xytext=(5, 0),
-                            textcoords='offset points',
-                            color=color,
-                            fontsize=10,
-                            ha='left',
-                            va='center')
-
-            # Сначала рисуем все обычные графики
+            # 1. Цены
             for symbol in self.symbols:
-                if len(self.prices[symbol]) != len(self.timestamps):
-                    logger.warning(f"Несоответствие данных для {symbol}. Пропуск построения графика.")
-                    continue
-
-                color = self.symbol_colors[symbol]
-                line_width = self.symbol_line_widths[symbol]
-
-                # Нормализация цен
                 prices = np.array(self.prices[symbol])
-                initial_price = prices[0]
-                if initial_price is None:
+                if len(prices) != len(self.timestamps) or prices[0] is None:
                     continue
+                norm_prices = (prices - prices[0]) / prices[0] * 100
+                axes[0].plot(self.timestamps, norm_prices, color=self.symbol_colors[symbol], label=symbol)
+            axes[0].set_ylabel('Изм. цены, %')
+            axes[0].legend()
+            axes[0].grid(True)
 
-                normalized_prices = (prices - initial_price) / initial_price * 100
-
-                # График цены
-                price_line, = ax1.plot(self.timestamps, normalized_prices, color=color, label=f'{symbol} Цена',
-                                       linewidth=line_width, linestyle='-')
-                price_lines.append(price_line)
-                price_labels.append(f'{symbol} Цена')
-
-                # Добавляем линейную регрессию для цен
-                x = mdates.date2num(self.timestamps)
-                x_scaled = (x - x[0]) / (x[-1] - x[0])  # Нормализуем x к диапазону [0, 1]
-                slope, intercept, r_value, p_value, std_err = stats.linregress(x_scaled, normalized_prices)
-                line = slope * x_scaled + intercept
-                reg_line, = ax1.plot(self.timestamps, line, color=color, linestyle='--', linewidth=1.5, alpha=alpha)
-                add_slope_annotation(ax1, x, line, slope, color)
-
-                # Добавляем полиномиальную аппроксимацию для цен
-                try:
-                    popt, _ = curve_fit(poly_func, x_scaled, normalized_prices)
-                    x_line = np.linspace(0, 1, 100)
-                    y_line = poly_func(x_line, *popt)
-                    approx_line, = ax1.plot(mdates.num2date(x[0] + x_line * (x[-1] - x[0])), y_line, color=color,
-                                            linestyle=':', linewidth=2, alpha=alpha)
-                    # Вычисляем наклон в последней точке полиномиальной аппроксимации
-                    poly_slope = 2 * popt[0] * x_line[-1] + popt[1]
-                    add_slope_annotation(ax1, x, y_line, poly_slope, color)
-                except Exception as e:
-                    print(f"Ошибка при расчете полиномиальной аппроксимации для {symbol} (цены): {e}")
-                    approx_line = None
-
-                # Аннотации для цен
-                for j, (timestamp, norm_price, price) in enumerate(zip(self.timestamps, normalized_prices, prices)):
-                    if j % annotation_interval == 0 or j == len(prices) - 1:
-                        ax1.annotate(f'{format_number(price)}',
-                                     xy=(timestamp, norm_price),
-                                     xytext=(0, 5), textcoords='offset points',
-                                     ha='center', va='bottom', color=color,
-                                     fontsize=8, rotation=45)
-
-                # Нормализация объемов
+            # 2. Объемы
+            for symbol in self.symbols:
                 volumes = np.array(self.volumes[symbol])
-                initial_volume = volumes[0]
-                normalized_volumes = (volumes - initial_volume) / initial_volume * 100
+                if len(volumes) != len(self.timestamps) or volumes[0] is None:
+                    continue
+                norm_volumes = (volumes - volumes[0]) / volumes[0] * 100
+                axes[1].plot(self.timestamps, norm_volumes, color=self.symbol_colors[symbol], label=symbol)
+            axes[1].set_ylabel('Изм. объема, %')
+            axes[1].legend()
+            axes[1].grid(True)
 
-                # График объема
-                volume_line, = ax2.plot(self.timestamps, normalized_volumes, color=color, label=f'{symbol} Объем',
-                                        linewidth=line_width, linestyle='-')
-                volume_lines.append(volume_line)
-                volume_labels.append(f'{symbol} Объем')
+            # 3. Open Interest
+            for symbol in self.symbols:
+                oi = np.array(self.open_interest[symbol])
+                valid_indices = [i for i, x in enumerate(oi) if x is not None]
+                if not valid_indices:
+                    continue
+                oi = oi[valid_indices]
+                valid_timestamps = [self.timestamps[i] for i in valid_indices]
+                if len(oi) == 0 or oi[0] is None:
+                    continue
+                norm_oi = (oi - oi[0]) / oi[0] * 100
+                axes[2].plot(valid_timestamps, norm_oi, color=self.symbol_colors[symbol], label=symbol)
+            axes[2].set_ylabel('Изм. OI, %')
+            axes[2].legend()
+            axes[2].grid(True)
 
-                # Добавляем линейную регрессию для объемов
-                slope, intercept, r_value, p_value, std_err = stats.linregress(x_scaled, normalized_volumes)
-                line = slope * x_scaled + intercept
-                ax2.plot(self.timestamps, line, color=color, linestyle='--', linewidth=1.5, alpha=alpha)
-                add_slope_annotation(ax2, x, line, slope, color)
+            # 4. RCI (Rank Correlation Index)
+            def calc_rci(prices, period=9):
+                # Простейшая реализация RCI
+                if len(prices) < period:
+                    return [None] * len(prices)
+                rci = [None] * (period - 1)
+                for i in range(period - 1, len(prices)):
+                    window = prices[i - period + 1:i + 1]
+                    rank_price = np.argsort(np.argsort(window))
+                    rank_time = np.arange(period)
+                    diff = rank_price - rank_time
+                    rci_val = (1 - 6 * np.sum(diff ** 2) / (period * (period ** 2 - 1))) * 100
+                    rci.append(rci_val)
+                return rci
 
-                # Добавляем полиномиальную аппроксимацию для объемов
-                try:
-                    popt, _ = curve_fit(poly_func, x_scaled, normalized_volumes)
-                    y_line = poly_func(x_line, *popt)
-                    ax2.plot(mdates.num2date(x[0] + x_line * (x[-1] - x[0])), y_line, color=color, linestyle=':',
-                             linewidth=2, alpha=alpha)
-                    # Вычисляем наклон в последней точке полиномиальной аппроксимации
-                    poly_slope = 2 * popt[0] * x_line[-1] + popt[1]
-                    add_slope_annotation(ax2, x, y_line, poly_slope, color)
-                except Exception as e:
-                    print(f"Ошибка при расчете полиномиальной аппроксимации для {symbol} (объемы): {e}")
+            for symbol in self.symbols:
+                prices = np.array(self.prices[symbol])
+                if len(prices) != len(self.timestamps) or prices[0] is None:
+                    continue
+                rci = calc_rci(prices)
+                axes[3].plot(self.timestamps, rci, color=self.symbol_colors[symbol], label=symbol)
+            axes[3].set_ylabel('RCI')
+            axes[3].legend()
+            axes[3].grid(True)
 
-                # Аннотации для объемов
-                for j, (timestamp, norm_volume, volume) in enumerate(zip(self.timestamps, normalized_volumes, volumes)):
-                    if j % annotation_interval == 0 or j == len(volumes) - 1:
-                        ax2.annotate(f'{format_number(volume)}',
-                                     xy=(timestamp, norm_volume),
-                                     xytext=(0, 5), textcoords='offset points',
-                                     ha='center', va='bottom', color=color,
-                                     fontsize=8, rotation=45)
-
-            # Добавляем линии регрессии и аппроксимации в легенду только один раз
-            price_lines.extend([ax1.plot([], [], color='gray', linestyle='--', linewidth=1.5)[0],
-                                ax1.plot([], [], color='gray', linestyle=':', linewidth=1)[0]])
-            price_labels.extend(['Линейная регрессия', 'Полиномиальная аппроксимация'])
-
-            # Для объемов добавляем только метки, так как линии уже добавлены
-            volume_labels.extend(['Линейная регрессия', 'Полиномиальная аппроксимация'])
-
-            # Устанавливаем легенды
-            ax1.legend(price_lines, price_labels, loc='upper left', fontsize=8)
-            ax2.legend(volume_lines + [ax2.plot([], [], color='gray', linestyle='--', linewidth=1.5)[0],
-                                       ax2.plot([], [], color='gray', linestyle=':', linewidth=1)[0]],
-                       volume_labels, loc='upper left', fontsize=8)
-
-            ax1.set_ylabel('Процентное изменение цены')
-            ax1.grid(True)
-            ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.1f}%"))
-            ax1.axhline(y=0, color='gray', linestyle='--')
-
-            ax2.set_xlabel('Время')
-            ax2.set_ylabel('Процентное изменение объема')
-            ax2.grid(True)
-            ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.1f}%"))
-            ax2.axhline(y=0, color='gray', linestyle='--')
-
+            axes[-1].set_xlabel('Время')
             plt.gcf().autofmt_xdate()
-            ax2.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%H:%M'))
-
-            plt.tight_layout(rect=[0, 0.03, 1, 0.97])
-
-            # Отдельно добавляем линию доминации ETH/BTC
-            if 'ETH/USDT' in self.prices and 'BTC/USDT' in self.prices:
-                # Получаем только те индексы, где есть данные для обеих монет
-                valid_indices = [i for i, (eth, btc) in enumerate(zip(self.prices['ETH/USDT'], self.prices['BTC/USDT']))
-                               if eth is not None and btc is not None]
-                
-                if valid_indices:
-                    # Создаем массивы только с валидными данными для доминации
-                    eth_prices = np.array([self.prices['ETH/USDT'][i] for i in valid_indices])
-                    btc_prices = np.array([self.prices['BTC/USDT'][i] for i in valid_indices])
-                    valid_timestamps = [self.timestamps[i] for i in valid_indices]
-                    
-                    # Вычисляем нормализованные значения для доминации
-                    eth_normalized = (eth_prices - eth_prices[0]) / eth_prices[0] * 100
-                    btc_normalized = (btc_prices - btc_prices[0]) / btc_prices[0] * 100
-                    dominance = eth_normalized - btc_normalized
-
-                    # Добавляем линию доминации
-                    dom_line, = ax1.plot(valid_timestamps, dominance, color='purple',
-                                       label='ETH/BTC Доминация', linewidth=1.5,
-                                       linestyle='--', alpha=0.8)
-                    
-                    # Добавляем в легенду
-                    price_lines.append(dom_line)
-                    if dominance[-1] > 0:
-                        dom_status = f'ETH/BTC: +{dominance[-1]:.1f}% (ETH сильнее)'
-                    else:
-                        dom_status = f'ETH/BTC: {dominance[-1]:.1f}% (BTC сильнее)'
-                    price_labels.append(dom_status)
-
-            # После отрисовки графиков цен и объемов, добавляем график открытого интереса
-            if 'BTC/USDT' in self.open_interest and 'ETH/USDT' in self.open_interest:
-                ax3 = ax1.twinx()  # Создаем дополнительную ось Y справа
-                
-                for symbol in ['BTC/USDT', 'ETH/USDT']:
-                    if len(self.open_interest[symbol]) > 0:
-                        # Проверяем, что длины массивов совпадают
-                        if len(self.timestamps) != len(self.open_interest[symbol]):
-                            logger.warning(f"Несоответствие размерностей для {symbol} OI. Пропуск построения графика.")
-                            continue
-                            
-                        # Нормализация открытого интереса
-                        oi_values = np.array(self.open_interest[symbol])
-                        # Фильтруем None значения
-                        valid_indices = [i for i, x in enumerate(oi_values) if x is not None]
-                        if not valid_indices:
-                            continue
-                            
-                        oi_values = oi_values[valid_indices]
-                        valid_timestamps = [self.timestamps[i] for i in valid_indices]
-                        
-                        if len(oi_values) > 0:
-                            initial_oi = oi_values[0]
-                            normalized_oi = (oi_values - initial_oi) / initial_oi * 100
-                            
-                            # Используем пунктирную линию для открытого интереса
-                            oi_line, = ax3.plot(valid_timestamps, normalized_oi, 
-                                              color=self.symbol_colors[symbol],
-                                              label=f'{symbol} OI',
-                                              linestyle='--',
-                                              alpha=0.7)
-                            
-                            # Добавляем в легенду
-                            price_lines.append(oi_line)
-                            price_labels.append(f'{symbol} OI')
-                
-                ax3.set_ylabel('Процентное изменение открытого интереса')
-                ax3.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.1f}%"))
-                ax3.grid(True, alpha=0.3)
-            
-            # Обновляем легенду с новыми элементами
-            ax1.legend(price_lines, price_labels, loc='upper left', fontsize=8)
-
-            # Устанавливаем фиксированные пределы времени
-            current_time = datetime.now(timezone)
-            # start_time = current_time - timedelta(hours=2)  # Показываем 2 часа истории
-            # end_time = current_time + timedelta(hours=6)    # Показываем 6 часов вперед
-
-            # Находим текущую и следующую сессии
-            current_session = None
-            next_session = None
-
-            # Сортируем сессии по времени начала
-            sorted_sessions = sorted(self.trading_sessions.items(), key=lambda x: x[1]['start'])
-            
-            # Определяем текущую и следующую сессии
-            for i, (session_name, session_info) in enumerate(sorted_sessions):
-                start_hour = session_info['start']
-                end_hour = session_info['end']
-                
-                # Проверяем, находимся ли мы в текущей сессии
-                if start_hour <= current_time.hour < end_hour:
-                    current_session = (session_name, session_info)
-                    # Следующая сессия - это следующая по списку (с учетом перехода через сутки)
-                    next_session = sorted_sessions[(i + 1) % len(sorted_sessions)]
-                    break
-                # Если мы не в сессии, то следующая - это первая, которая еще не началась
-                elif current_time.hour < start_hour:
-                    next_session = (session_name, session_info)
-                    break
-
-            sessions_to_show = []
-            if current_session:
-                sessions_to_show.append(current_session)
-            if next_session:
-                sessions_to_show.append(next_session)
-
-            # Отрисовываем выбранные сессии
-            for session_name, session_info in sessions_to_show:
-                start_hour = session_info['start']
-                end_hour = session_info['end']
-                
-                session_start = datetime.combine(current_time.date(), 
-                                               datetime.min.time().replace(hour=start_hour),
-                                               timezone)
-                session_end = datetime.combine(current_time.date(), 
-                                             datetime.min.time().replace(hour=end_hour),
-                                             timezone)
-                
-                # Если сессия переходит через полночь
-                if end_hour < start_hour:
-                    if current_time.hour >= start_hour:
-                        session_end = session_end + timedelta(days=1)
-                    else:
-                        session_start = session_start - timedelta(days=1)
-                
-                # Если это текущая сессия и она уже началась, используем текущее время
-                if current_session and session_name == current_session[0] and start_hour <= current_time.hour:
-                    session_start = current_time
-                
-                # Добавляем вертикальные линии на оба графика
-                # for ax in [ax1, ax2]:
-                #     ax.axvline(x=session_start, color=session_info['color'],
-                #               linestyle=':', alpha=0.5, linewidth=1)
-                #     ax.axvline(x=session_end, color=session_info['color'],
-                #               linestyle=':', alpha=0.5, linewidth=1)
-                #
-                #     # Добавляем метки сессий
-                #     ax.text(session_start, ax.get_ylim()[1], f'{session_name}',
-                #            rotation=90, va='top', ha='right', fontsize=8,
-                #            color=session_info['color'])
-
+            plt.tight_layout()
+            caption = f"Анализ: цена, объем, OI, RCI за период {self.interval}s на {datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S')}"
             buf = BytesIO()
             plt.savefig(buf, format='png', dpi=self.dpi)
-            plt.savefig('render/graph.png', format='png', dpi=self.dpi)
             buf.seek(0)
             plt.close()
-
             return buf, caption
-
         finally:
-            # Логируем время создания графика с форматированием до 2 знаков
-            execution_time = float(time.time()) - start_time
-            logger.info(f"Chart creation time: {execution_time:.2f} seconds")
-
-            plt.close()
+            logger.info(f"Chart creation time: {time.time() - start_time:.2f} seconds")
 
     def create_indices_chart(self):
         start_time = time.time()
