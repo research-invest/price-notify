@@ -91,6 +91,7 @@ class CryptoAnalyzer:
         self.cpu_threshold = 30  # Порог загрузки CPU в процентах
         self.performance_log_interval = 60  # Логировать производительность каждые 60 секунд
         self.last_performance_log = time.time()
+        self.open_interest = {symbol: [] for symbol in self.symbols}  # Добавляем словарь для хранения открытого интереса
 
     def load_historical_data(self):
         end_date = datetime.now(timezone)
@@ -212,12 +213,15 @@ class CryptoAnalyzer:
             if not self.timestamps or current_time > self.timestamps[-1]:
                 self.timestamps.append(current_time)
                 for symbol in self.symbols:
-                    price, volume = self.get_price_and_volume(symbol)
+                    price, volume, open_interest = self.get_price_and_volume(symbol)
+
                     price = float(price)
                     volume = float(volume)
+                    open_interest = float(open_interest) if open_interest is not None else None
 
                     self.prices[symbol].append(price)
                     self.volumes[symbol].append(volume)
+                    self.open_interest[symbol].append(open_interest)
 
                     # Сохранение данных в БД
                     try:
@@ -227,12 +231,14 @@ class CryptoAnalyzer:
             else:
                 # Обновляем последнюю запись, если время совпадает
                 for symbol in self.symbols:
-                    price, volume = self.get_price_and_volume(symbol)
+                    price, volume, open_interest = self.get_price_and_volume(symbol)
                     price = float(price)
                     volume = float(volume)
+                    open_interest = float(open_interest) if open_interest is not None else None
 
                     self.prices[symbol][-1] = price
                     self.volumes[symbol][-1] = volume
+                    self.open_interest[symbol][-1] = open_interest
                     # Обновляем запись в БД
                     try:
                         self.db_manager.update_price_data(symbol, current_time, price, volume)
@@ -265,6 +271,7 @@ class CryptoAnalyzer:
                 for symbol in self.symbols:
                     self.prices[symbol] = self.prices[symbol][-self.timestamps_limit:]
                     self.volumes[symbol] = self.volumes[symbol][-self.timestamps_limit:]
+                    self.open_interest[symbol] = self.open_interest[symbol][-self.timestamps_limit:]
 
             await self.send_message(message)
 
@@ -351,7 +358,14 @@ class CryptoAnalyzer:
 
     def get_price_and_volume(self, symbol: str):
         ticker = self.exchange.fetch_ticker(symbol)
-        return ticker['last'], ticker['quoteVolume']
+        try:
+            open_interest = self.exchange.fetch_open_interest(symbol)['openInterestAmount']
+            if open_interest is None:
+                logger.warning(f"Open interest is None for {symbol}")
+        except Exception as e:
+            logger.warning(f"Failed to fetch open interest for {symbol}: {e}")
+            open_interest = None
+        return ticker['last'], ticker['quoteVolume'], open_interest
 
     def create_price_volume_chart(self):
         start_time = time.time()
@@ -549,6 +563,46 @@ class CryptoAnalyzer:
                         dom_status = f'ETH/BTC: {dominance[-1]:.1f}% (BTC сильнее)'
                     price_labels.append(dom_status)
 
+            # После отрисовки графиков цен и объемов, добавляем график открытого интереса
+            if 'BTC/USDT' in self.open_interest and 'ETH/USDT' in self.open_interest:
+                ax3 = ax1.twinx()  # Создаем дополнительную ось Y справа
+                
+                for symbol in ['BTC/USDT', 'ETH/USDT']:
+                    if len(self.open_interest[symbol]) > 0:
+                        # Проверяем, что длины массивов совпадают
+                        if len(self.timestamps) != len(self.open_interest[symbol]):
+                            logger.warning(f"Несоответствие размерностей для {symbol} OI. Пропуск построения графика.")
+                            continue
+                            
+                        # Нормализация открытого интереса
+                        oi_values = np.array(self.open_interest[symbol])
+                        # Фильтруем None значения
+                        valid_indices = [i for i, x in enumerate(oi_values) if x is not None]
+                        if not valid_indices:
+                            continue
+                            
+                        oi_values = oi_values[valid_indices]
+                        valid_timestamps = [self.timestamps[i] for i in valid_indices]
+                        
+                        if len(oi_values) > 0:
+                            initial_oi = oi_values[0]
+                            normalized_oi = (oi_values - initial_oi) / initial_oi * 100
+                            
+                            # Используем пунктирную линию для открытого интереса
+                            oi_line, = ax3.plot(valid_timestamps, normalized_oi, 
+                                              color=self.symbol_colors[symbol],
+                                              label=f'{symbol} OI',
+                                              linestyle='--',
+                                              alpha=0.7)
+                            
+                            # Добавляем в легенду
+                            price_lines.append(oi_line)
+                            price_labels.append(f'{symbol} OI')
+                
+                ax3.set_ylabel('Процентное изменение открытого интереса')
+                ax3.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.1f}%"))
+                ax3.grid(True, alpha=0.3)
+            
             # Обновляем легенду с новыми элементами
             ax1.legend(price_lines, price_labels, loc='upper left', fontsize=8)
 
