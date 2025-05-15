@@ -75,6 +75,7 @@ class CryptoAnalyzer:
         self.interval = interval
         self.prices = {symbol: [] for symbol in self.symbols}
         self.volumes = {symbol: [] for symbol in self.symbols}
+        self.open_interest = {symbol: [] for symbol in self.symbols}
         self.timestamps = []
         self.db_manager = DatabaseManager(db_config)
         self.db_manager.connect()
@@ -91,7 +92,6 @@ class CryptoAnalyzer:
         self.cpu_threshold = 30  # Порог загрузки CPU в процентах
         self.performance_log_interval = 60  # Логировать производительность каждые 60 секунд
         self.last_performance_log = time.time()
-        self.open_interest = {symbol: [] for symbol in self.symbols}  # Добавляем словарь для хранения открытого интереса
 
     def load_historical_data(self):
         end_date = datetime.now(timezone)
