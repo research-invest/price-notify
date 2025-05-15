@@ -126,6 +126,7 @@ class CryptoAnalyzer:
 
             self.prices[symbol] = []
             self.volumes[symbol] = []
+            self.open_interest[symbol] = []
 
             for timestamp in self.timestamps:
                 if timestamp in data_dict:

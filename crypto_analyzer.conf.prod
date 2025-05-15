@@ -1,0 +1,8 @@
+[program:crypto_analyzer]
+directory=/var/www/price-notify
+command=/usr/bin/python3 /var/www/price-notify/main.py
+autostart=true
+autorestart=true
+stderr_logfile=/var/log/crypto_analyzer.err.log
+stdout_logfile=/var/log/crypto_analyzer.out.log
+user=root

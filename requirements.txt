@@ -7,3 +7,4 @@ requests
 pycoingecko
 mysql-connector-python
 scipy
+psutil
