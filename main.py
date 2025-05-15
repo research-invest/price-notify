@@ -122,7 +122,7 @@ class CryptoAnalyzer:
         # Теперь заполним данные для каждого символа
         for symbol in self.symbols:
             historical_data = self.db_manager.get_historical_data(symbol, start_date, end_date)
-            data_dict = {row[0]: (float(row[1]), float(row[2])) for row in historical_data}
+            data_dict = {row[0]: (float(row[1]), float(row[2]), float(row[3])) for row in historical_data}
 
             self.prices[symbol] = []
             self.volumes[symbol] = []
@@ -131,10 +131,12 @@ class CryptoAnalyzer:
                 if timestamp in data_dict:
                     self.prices[symbol].append(data_dict[timestamp][0])
                     self.volumes[symbol].append(data_dict[timestamp][1])
+                    self.open_interest[symbol].append(data_dict[timestamp][2])
                 else:
                     # Если данных нет, используем предыдущее значение или None
                     self.prices[symbol].append(self.prices[symbol][-1] if self.prices[symbol] else None)
                     self.volumes[symbol].append(self.volumes[symbol][-1] if self.volumes[symbol] else None)
+                    self.open_interest[symbol].append(self.open_interest[symbol][-1] if self.open_interest[symbol] else None)
 
             logger.info(f"Загружено {len(historical_data)} исторических записей для {symbol}")
 
@@ -168,7 +170,7 @@ class CryptoAnalyzer:
                 # Обновляем данные S&P 500
                 sp500 = yf.Ticker("^GSPC")
                 latest_sp500 = float(sp500.history(period="1d")['Close'].iloc[-1])
-                self.db_manager.save_price_data('SP500', current_time, latest_sp500, 0)  # объем 0 для S&P 500
+                self.db_manager.save_price_data('SP500', current_time, latest_sp500, 0, 0)
                 self.indices['SP500']['values'].append(latest_sp500)
                 self.indices['SP500']['timestamps'].append(current_time)
 
@@ -176,7 +178,7 @@ class CryptoAnalyzer:
                 fear_greed_data = requests.get('https://api.alternative.me/fng/').json()
                 fear_greed_value = int(fear_greed_data['data'][0]['value'])
                 self.db_manager.save_price_data('Fear&Greed', current_time, fear_greed_value,
-                                                0)  # объем 0 для Fear&Greed
+                                                0, 0)
                 self.indices['Fear&Greed']['values'].append(fear_greed_value)
                 self.indices['Fear&Greed']['timestamps'].append(current_time)
 
@@ -184,7 +186,7 @@ class CryptoAnalyzer:
                 bitcoin_data = self.cg.get_global()
                 btc_dominance = float(bitcoin_data['market_cap_percentage']['btc'])
                 self.db_manager.save_price_data('BTC_Dominance', current_time, btc_dominance,
-                                                0)  # объем 0 для BTC_Dominance
+                                                0, 0)
                 self.indices['BTC_Dominance']['values'].append(btc_dominance)
                 self.indices['BTC_Dominance']['timestamps'].append(current_time)
 
@@ -192,21 +194,21 @@ class CryptoAnalyzer:
                 total_market_cap = float(bitcoin_data['total_market_cap']['usd'])
 
                 self.db_manager.save_price_data('Total_Market_Cap', current_time, total_market_cap,
-                                                0)  # объем 0 для Total_Market_Cap
+                                                0, 0)
                 self.indices['Total_Market_Cap']['values'].append(total_market_cap)
                 self.indices['Total_Market_Cap']['timestamps'].append(current_time)
 
                 # И изменение капитализации за 24 часа
                 market_cap_change_24h = float(bitcoin_data['market_cap_change_percentage_24h_usd'])
                 self.db_manager.save_price_data('Total_Market_Cap', current_time, market_cap_change_24h,
-                                                0)  # объем 0 для Market_Cap_Change_24h
+                                                0, 0)
                 self.indices['Market_Cap_Change_24h']['values'].append(market_cap_change_24h)
                 self.indices['Market_Cap_Change_24h']['timestamps'].append(current_time)
 
                 # Обновляем NASDAQ-100
                 nasdaq = yf.Ticker("^NDX")
                 latest_nasdaq = float(nasdaq.history(period="1d")['Close'].iloc[-1])
-                self.db_manager.save_price_data('NASDAQ', current_time, latest_nasdaq, 0)  # объем 0 для NASDAQ
+                self.db_manager.save_price_data('NASDAQ', current_time, latest_nasdaq, 0, 0)
                 self.indices['NASDAQ']['values'].append(latest_nasdaq)
                 self.indices['NASDAQ']['timestamps'].append(current_time)
 
@@ -225,7 +227,7 @@ class CryptoAnalyzer:
 
                     # Сохранение данных в БД
                     try:
-                        self.db_manager.save_price_data(symbol, current_time, price, volume)
+                        self.db_manager.save_price_data(symbol, current_time, price, volume, open_interest)
                     except Exception as db_error:
                         logger.error(f"Ошибка при сохранении данных в БД: {db_error}")
             else:

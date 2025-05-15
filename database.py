@@ -28,21 +28,22 @@ class DatabaseManager:
             symbol VARCHAR(20) NOT NULL,
             timestamp DATETIME NOT NULL,
             price DECIMAL(65, 10) NOT NULL,
-            volume DECIMAL(20, 8) NOT NULL
+            volume DECIMAL(20, 8) NOT NULL,
+            open_interest FLOAT NULL
         );
         """
         self._execute_query(create_table_query)
 
-    def save_price_data(self, symbol: str, timestamp: datetime, price: float, volume: float):
+    def save_price_data(self, symbol: str, timestamp: datetime, price: float, volume: float, open_interest: float):
         insert_query = """
-            INSERT INTO price_history (symbol, timestamp, price, volume)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO price_history (symbol, timestamp, price, volume, open_interest)
+            VALUES (%s, %s, %s, %s, %s)
         """
-        self._execute_query(insert_query, (symbol, timestamp, price, volume))
+        self._execute_query(insert_query, (symbol, timestamp, price, volume, open_interest))
 
     def get_historical_data(self, symbol: str, start_date: datetime, end_date: datetime):
         select_query = """
-            SELECT timestamp, price, volume
+            SELECT timestamp, price, volume, open_interest
             FROM price_history
             WHERE symbol = %s AND timestamp BETWEEN %s AND %s
             ORDER BY timestamp
