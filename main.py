@@ -419,7 +419,6 @@ class CryptoAnalyzer:
 
             # 4. RCI (Rank Correlation Index)
             def calc_rci(prices, period=9):
-                # Простейшая реализация RCI
                 if len(prices) < period:
                     return [None] * len(prices)
                 rci = [None] * (period - 1)
@@ -433,6 +432,8 @@ class CryptoAnalyzer:
                 return rci
 
             for symbol in self.symbols:
+                if symbol not in ['BTC/USDT', 'ETH/USDT']:
+                    continue
                 prices = np.array(self.prices[symbol])
                 if len(prices) != len(self.timestamps) or prices[0] is None:
                     continue
@@ -445,7 +446,7 @@ class CryptoAnalyzer:
             axes[-1].set_xlabel('Время')
             plt.gcf().autofmt_xdate()
             plt.tight_layout()
-            caption = f"Анализ: цена, объем, OI, RCI за период {self.interval}s на {datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S')}"
+            caption = f"Анализ: цена, объем, OI, RCI (BTC/ETH) за период {self.interval}s на {datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S')}"
             buf = BytesIO()
             plt.savefig(buf, format='png', dpi=self.dpi)
             buf.seek(0)
