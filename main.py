@@ -361,19 +361,21 @@ class CryptoAnalyzer:
         return analysis
 
     def get_price_and_volume(self, symbol: str):
-        ticker = {
-            'last': 0,
-            'quoteVolume': 0,
-        }
         try:
             ticker = self.exchange.fetch_ticker(symbol)
             open_interest = self.exchange.fetch_open_interest(symbol)['openInterestAmount']
-            if open_interest is None:
-                logger.warning(f"Open interest is None for {symbol}")
+            last_price = ticker.get('last', 0)
+            quote_volume = ticker.get('quoteVolume', 0)
+
+            last_price = 0 if last_price is None else last_price
+            quote_volume = 0 if quote_volume is None else quote_volume
+            open_interest = 0 if open_interest is None else open_interest
         except Exception as e:
             logger.warning(f"Failed to fetch open interest for {symbol}: {e}")
+            last_price = 0
+            quote_volume = 0
             open_interest = 0
-        return ticker['last'], ticker['quoteVolume'], open_interest
+        return last_price, quote_volume, open_interest
 
     def create_price_volume_oi_rci_chart(self):
         start_time = time.time()
