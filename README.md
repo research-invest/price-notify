@@ -61,6 +61,9 @@ supervisorctl start crypto_analyzer
 supervisorctl restart crypto_analyzer
 
 
+https://docs.ccxt.com/#/
+
+
 
 killall core
 

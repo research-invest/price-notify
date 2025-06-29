@@ -361,8 +361,12 @@ class CryptoAnalyzer:
         return analysis
 
     def get_price_and_volume(self, symbol: str):
-        ticker = self.exchange.fetch_ticker(symbol)
+        ticker = {
+            'last': 0,
+            'quoteVolume': 0,
+        }
         try:
+            ticker = self.exchange.fetch_ticker(symbol)
             open_interest = self.exchange.fetch_open_interest(symbol)['openInterestAmount']
             if open_interest is None:
                 logger.warning(f"Open interest is None for {symbol}")
