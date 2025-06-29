@@ -372,7 +372,7 @@ class CryptoAnalyzer:
                 logger.warning(f"Open interest is None for {symbol}")
         except Exception as e:
             logger.warning(f"Failed to fetch open interest for {symbol}: {e}")
-            open_interest = None
+            open_interest = 0
         return ticker['last'], ticker['quoteVolume'], open_interest
 
     def create_price_volume_oi_rci_chart(self):
