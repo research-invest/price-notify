@@ -467,6 +467,7 @@ class CryptoAnalyzer:
             logger.info(f"Chart creation time: {time.time() - start_time:.2f} seconds")
 
     # Пример функции расчета VSA-сигналов в виде линейной метрики (для отображения на графике)
+    @staticmethod
     def calculate_vsa_signals(prices: list, volumes: list) -> list:
         df = pd.DataFrame({
             'close': prices,
