@@ -2,6 +2,7 @@ ccxt
 python-telegram-bot
 matplotlib
 numpy
+pandas
 yfinance
 requests
 pycoingecko

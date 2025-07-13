@@ -6,6 +6,7 @@ from telegram.error import TimedOut, TelegramError
 import matplotlib.pyplot as plt
 from io import BytesIO
 import numpy as np
+import pandas as pd
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import json
@@ -279,8 +280,12 @@ class CryptoAnalyzer:
             await self.send_message(message)
 
             # Новый график: цены, объемы, OI, RCI
-            price_volume_oi_rci_chart = self.create_price_volume_oi_rci_chart()
-            await self.send_chart(price_volume_oi_rci_chart)
+            # price_volume_oi_rci_chart = self.create_price_volume_oi_rci_chart()
+            # await self.send_chart(price_volume_oi_rci_chart)
+
+            # Новый график: цены, объемы, OI, RCI
+            price_volume_oi_vsa_chart = self.create_price_volume_oi_vsa_chart()
+            await self.send_chart(price_volume_oi_vsa_chart)
 
             # Отправляем график индексов раз в час
             current_time = datetime.now(timezone)
@@ -453,6 +458,128 @@ class CryptoAnalyzer:
             plt.gcf().autofmt_xdate()
             plt.tight_layout()
             caption = f"Анализ: цена, объем, OI, RCI (BTC/ETH) за период {self.interval}s на {datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S')}"
+            buf = BytesIO()
+            plt.savefig(buf, format='png', dpi=self.dpi)
+            buf.seek(0)
+            plt.close()
+            return buf, caption
+        finally:
+            logger.info(f"Chart creation time: {time.time() - start_time:.2f} seconds")
+
+    # Пример функции расчета VSA-сигналов в виде линейной метрики (для отображения на графике)
+    def calculate_vsa_signals(prices: list, volumes: list) -> list:
+        df = pd.DataFrame({
+            'close': prices,
+            'volume': volumes
+        })
+        df['open'] = df['close'].shift(1).fillna(df['close'][0])
+        df['high'] = df[['open', 'close']].max(axis=1)
+        df['low'] = df[['open', 'close']].min(axis=1)
+        df['spread'] = df['high'] - df['low']
+        df['close_rel'] = (df['close'] - df['low']) / df['spread'].replace(0, np.nan)
+
+        signal = pd.Series(0, index=df.index)
+
+        # No Demand
+        cond_nd = (
+                (df['close'] > df['open']) &
+                (df['volume'] < df['volume'].rolling(10).mean() * 0.7) &
+                (df['spread'] < df['spread'].rolling(10).mean()) &
+                (df['close_rel'] > 0.7)
+        )
+        signal[cond_nd] = -1
+
+        # UpThrust
+        cond_ut = (
+                (df['close'] < df['open']) &
+                (df['volume'] > df['volume'].rolling(10).mean() * 1.2) &
+                (df['spread'] > df['spread'].rolling(10).mean()) &
+                (df['close_rel'] < 0.3)
+        )
+        signal[cond_ut] = -1
+
+        # No Supply
+        cond_ns = (
+                (df['close'] < df['open']) &
+                (df['volume'] < df['volume'].rolling(10).mean() * 0.7) &
+                (df['spread'] < df['spread'].rolling(10).mean()) &
+                (df['close_rel'] < 0.3)
+        )
+        signal[cond_ns] = 1
+
+        # Stopping Volume
+        cond_sv = (
+                (df['close'] < df['open']) &
+                (df['volume'] > df['volume'].rolling(10).mean() * 1.5) &
+                (df['close_rel'] > 0.5)
+        )
+        signal[cond_sv] = 1
+
+        return signal.rolling(3).mean().fillna(0).tolist()
+
+
+    def create_price_volume_oi_vsa_chart(self):
+        start_time = time.time()
+        try:
+            if len(self.timestamps) < 2:
+                return None
+
+            fig, axes = plt.subplots(4, 1, figsize=(14, 16), sharex=True)
+
+            # 1. Цены
+            for symbol in self.symbols:
+                prices = np.array(self.prices[symbol])
+                if len(prices) != len(self.timestamps) or prices[0] is None:
+                    continue
+                norm_prices = (prices - prices[0]) / prices[0] * 100
+                axes[0].plot(self.timestamps, norm_prices, color=self.symbol_colors[symbol], label=symbol)
+            axes[0].set_ylabel('Изм. цены, %')
+            axes[0].legend()
+            axes[0].grid(True)
+
+            # 2. Объемы
+            for symbol in self.symbols:
+                volumes = np.array(self.volumes[symbol])
+                if len(volumes) != len(self.timestamps) or volumes[0] is None:
+                    continue
+                norm_volumes = (volumes - volumes[0]) / volumes[0] * 100
+                axes[1].plot(self.timestamps, norm_volumes, color=self.symbol_colors[symbol], label=symbol)
+            axes[1].set_ylabel('Изм. объема, %')
+            axes[1].legend()
+            axes[1].grid(True)
+
+            # 3. Open Interest
+            for symbol in self.symbols:
+                oi = np.array(self.open_interest[symbol])
+                valid_indices = [i for i, x in enumerate(oi) if x is not None]
+                if not valid_indices:
+                    continue
+                oi = oi[valid_indices]
+                valid_timestamps = [self.timestamps[i] for i in valid_indices]
+                if len(oi) == 0 or oi[0] is None:
+                    continue
+                norm_oi = (oi - oi[0]) / oi[0] * 100
+                axes[2].plot(valid_timestamps, norm_oi, color=self.symbol_colors[symbol], label=symbol)
+            axes[2].set_ylabel('Изм. OI, %')
+            axes[2].legend()
+            axes[2].grid(True)
+
+            # 4. VSA сигналы
+            for symbol in self.symbols:
+                prices = self.prices[symbol]
+                volumes = self.volumes[symbol]
+                if len(prices) < 10 or prices[0] is None:
+                    continue
+                vsa_signal = self.calculate_vsa_signals(prices, volumes)
+                axes[3].plot(self.timestamps, vsa_signal, color=self.symbol_colors[symbol], label=symbol)
+            axes[3].set_ylabel('VSA сила/слабость')
+            axes[3].legend()
+            axes[3].grid(True)
+
+            axes[-1].set_xlabel('Время')
+            plt.gcf().autofmt_xdate()
+            plt.tight_layout()
+            caption = f"Анализ: цена, объем, OI, VSA за период {self.interval}s на {datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S')}"
             buf = BytesIO()
             plt.savefig(buf, format='png', dpi=self.dpi)
             buf.seek(0)
