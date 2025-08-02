@@ -27,6 +27,7 @@ pm2 list
 pm2 stop price-notify
 pm2 restart price-notify
 pm2 delete price-notify
+pm2 logs price-notify
 
 pip install scipy --break-system-packages
 
