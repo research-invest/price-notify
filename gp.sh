@@ -1,4 +1,4 @@
 #!/bin/bash
 git pull
 
-supervisorctl restart all
+pm2 restart price-notify

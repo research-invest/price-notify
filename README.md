@@ -21,6 +21,14 @@ pip install -r requirements.txt --break-system-packages
 
 python3 main.py
 
+
+pm2 start python3 /var/www/price-notify/main.py --name "price-notify"
+pm2 list
+pm2 stop price-notify
+pm2 restart price-notify
+pm2 delete price-notify
+
+
 pip install scipy --break-system-packages
 
 cd html
