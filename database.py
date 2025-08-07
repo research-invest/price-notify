@@ -35,6 +35,8 @@ class DatabaseManager:
         self._execute_query(create_table_query)
 
     def save_price_data(self, symbol: str, timestamp: datetime, price: float, volume: float, open_interest: float):
+        if price == 0:
+            return
         insert_query = """
             INSERT INTO price_history (symbol, timestamp, price, volume, open_interest)
             VALUES (%s, %s, %s, %s, %s)
